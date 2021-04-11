@@ -1,0 +1,4 @@
+(executable
+ (public_name kilo)
+ (name main)
+ (libraries kilo unix))
