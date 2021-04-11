@@ -2,7 +2,8 @@
 let enable_raw_mode () =
   let open Unix in
   let termios = tcgetattr stdin in
-  tcsetattr stdin TCSAFLUSH { termios with c_echo = false };
+  tcsetattr stdin TCSAFLUSH
+    { termios with c_echo = false; c_icanon = false };
   (fun () -> tcsetattr stdin TCSAFLUSH termios)
 
 let get_char () =
@@ -15,7 +16,7 @@ let () =
     match get_char () with
     | None -> ()
     | Some 'q' -> ()
-    | Some _ -> loop ()
+    | Some c -> Printf.printf "%c%!" c; loop ()
   in
   let disable_raw_mode = enable_raw_mode () in
   Fun.protect (fun () ->
