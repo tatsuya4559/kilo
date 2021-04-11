@@ -1,16 +1,23 @@
+(* returns reset function *)
+let enable_raw_mode () =
+  let open Unix in
+  let termios = tcgetattr stdin in
+  tcsetattr stdin TCSAFLUSH { termios with c_echo = false };
+  (fun () -> tcsetattr stdin TCSAFLUSH termios)
+
 let get_char () =
-  let termio = Unix.tcgetattr Unix.stdin in
-  Unix.tcsetattr Unix.stdin Unix.TCSADRAIN { termio with c_icanon = false };
-  Fun.protect (fun () ->
-    try
-      Some (input_char stdin)
-    with End_of_file -> None
-  ) ~finally:(fun () -> Unix.tcsetattr Unix.stdin Unix.TCSADRAIN termio)
+  try
+    Some (input_char stdin)
+  with End_of_file -> None
 
 let () =
   let rec loop () =
     match get_char () with
-    | Some _ -> loop ()
     | None -> ()
+    | Some 'q' -> ()
+    | Some _ -> loop ()
   in
-  loop ()
+  let disable_raw_mode = enable_raw_mode () in
+  Fun.protect (fun () ->
+    loop ()
+  ) ~finally:(fun () -> disable_raw_mode ())
