@@ -3,7 +3,12 @@ let enable_raw_mode () =
   let open Unix in
   let termios = tcgetattr stdin in
   tcsetattr stdin TCSAFLUSH
-    { termios with c_echo = false; c_icanon = false; c_isig = false };
+    { termios with
+      c_echo = false;
+      c_icanon = false;
+      c_isig = false;
+      c_ixon = false;
+    };
   (fun () -> tcsetattr stdin TCSAFLUSH termios)
 
 let get_char () =
