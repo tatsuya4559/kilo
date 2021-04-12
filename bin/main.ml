@@ -15,20 +15,20 @@ let enable_raw_mode () =
       c_icanon = false;
       c_isig = false;
       c_csize = 8;
+      c_vmin = 0;
+      c_vtime = 1;
     };
   (fun () -> tcsetattr stdin TCSAFLUSH termios)
 
 let get_char () =
-  try
-    Some (input_char stdin)
-  with End_of_file -> None
+  try input_char stdin
+  with End_of_file -> '\000'
 
 let () =
   let rec loop () =
     match get_char () with
-    | None -> ()
-    | Some 'q' -> ()
-    | Some c -> Printf.printf "%d (%c)\r\n%!" (Char.code c) c; loop ()
+    | 'q' -> ()
+    | c -> Printf.printf "%d (%c)\r\n%!" (Char.code c) c; loop ()
   in
   let disable_raw_mode = enable_raw_mode () in
   Fun.protect (fun () -> loop ())
