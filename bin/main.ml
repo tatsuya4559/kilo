@@ -6,6 +6,7 @@ let enable_raw_mode () =
     { termios with
       c_ixon = false;
       c_icrnl = false;
+      c_opost = false;
       c_echo = false;
       c_icanon = false;
       c_isig = false;
@@ -22,7 +23,7 @@ let () =
     match get_char () with
     | None -> ()
     | Some 'q' -> ()
-    | Some c -> Printf.printf "%d (%c)\n%!" (Char.code c) c; loop ()
+    | Some c -> Printf.printf "%d (%c)\r\n%!" (Char.code c) c; loop ()
   in
   let disable_raw_mode = enable_raw_mode () in
   Fun.protect (fun () ->
