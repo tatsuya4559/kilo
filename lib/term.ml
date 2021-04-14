@@ -1,5 +1,4 @@
-(* returns reset function *)
-let enable_raw_mode () =
+let with_raw_mode fn =
   let open Unix in
   let termios = tcgetattr stdin in
   tcsetattr stdin TCSAFLUSH
@@ -18,7 +17,7 @@ let enable_raw_mode () =
       c_vmin = 0;
       c_vtime = 1;
     };
-  (fun () -> tcsetattr stdin TCSAFLUSH termios)
+  Fun.protect fn ~finally:(fun () -> tcsetattr stdin TCSAFLUSH termios)
 
 let get_char () =
   try input_char stdin
