@@ -23,3 +23,29 @@ let enable_raw_mode () =
 let get_char () =
   try input_char stdin
   with End_of_file -> '\000'
+
+let write = output_string stdout
+let flush () = flush stdout
+
+let draw_rows () =
+  for _ = 0 to 23 do
+    write "~\r\n"
+  done
+
+let refresh_screen () =
+  write "\x1b[2J";
+  write "\x1b[H";
+  draw_rows ();
+  write "\x1b[H";
+  flush ()
+
+let ctrl c =
+  Char.chr ((Char.code c) land 0x1f)
+
+let rec process_keypress () =
+  match get_char () with
+  | c when c = ctrl 'q' ->
+      write "\x1b[2J";
+      write "\x1b[H";
+      flush ()
+  | _ -> process_keypress ()
