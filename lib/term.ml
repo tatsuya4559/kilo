@@ -19,12 +19,19 @@ let with_raw_mode fn =
     };
   Fun.protect fn ~finally:(fun () -> tcsetattr stdin TCSAFLUSH termios)
 
+let write = output_string stdout
+let flush () = flush stdout
+
+let die msg =
+  write "\x1b[2J";
+  write "\x1b[H";
+  flush ();
+  Printf.eprintf "%s\n" msg;
+  exit 1
+
 let get_char () =
   try input_char stdin
   with End_of_file -> '\000'
-
-let write = output_string stdout
-let flush () = flush stdout
 
 module Editor_config = struct
   type t = {
