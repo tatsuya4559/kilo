@@ -27,17 +27,31 @@ let get_char () =
 let write = output_string stdout
 let flush () = flush stdout
 
-let draw_rows () =
-  for _ = 0 to 23 do
-    write "~\r\n"
-  done
+module Editor_config = struct
+  type t = {
+    screenrows: int;
+    screencols: int;
+  }
 
-let refresh_screen () =
-  write "\x1b[2J";
-  write "\x1b[H";
-  draw_rows ();
-  write "\x1b[H";
-  flush ()
+  let create () =
+    let open Option_monad in
+    let* rows = Terminal_size.get_rows () in
+    let* cols = Terminal_size.get_columns () in
+    Some { screenrows = rows; screencols = cols }
+
+  let draw_rows t =
+    for _ = 1 to t.screenrows do
+      write "~\r\n"
+    done
+
+  let refresh_screen t =
+    write "\x1b[2J";
+    write "\x1b[H";
+    draw_rows t;
+    write "\x1b[H";
+    flush ()
+end
+
 
 let ctrl c =
   Char.chr ((Char.code c) land 0x1f)
