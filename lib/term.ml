@@ -19,12 +19,17 @@ let with_raw_mode fn =
     };
   Fun.protect fn ~finally:(fun () -> tcsetattr stdin TCSAFLUSH termios)
 
+module Escape_command = struct
+  let clear_screen = "\x1b[2J"
+  let cursor_topleft = "\x1b[H"
+end
+
 let write = output_string stdout
 let flush () = flush stdout
 
 let die msg =
-  write "\x1b[2J";
-  write "\x1b[H";
+  write Escape_command.clear_screen;
+  write Escape_command.cursor_topleft;
   flush ();
   Printf.eprintf "%s\n" msg;
   exit 1
@@ -51,10 +56,10 @@ module Editor_config = struct
     done
 
   let refresh_screen t =
-    write "\x1b[2J";
-    write "\x1b[H";
+    write Escape_command.clear_screen;
+    write Escape_command.cursor_topleft;
     draw_rows t;
-    write "\x1b[H";
+    write Escape_command.cursor_topleft;
     flush ()
 end
 
@@ -65,7 +70,7 @@ let ctrl c =
 let rec process_keypress () =
   match get_char () with
   | c when c = ctrl 'q' ->
-      write "\x1b[2J";
-      write "\x1b[H";
+      write Escape_command.clear_screen;
+      write Escape_command.cursor_topleft;
       flush ()
   | _ -> process_keypress ()
