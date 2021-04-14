@@ -3,5 +3,8 @@ let ctrl c =
 
 let rec process_keypress () =
   match Term.get_char () with
-  | c when c = ctrl 'q' -> Output.refresh_screen ()
+  | c when c = ctrl 'q' ->
+      Output.write "\x1b[2J";
+      Output.write "\x1b[H";
+      Output.flush ()
   | _ -> process_keypress ()
