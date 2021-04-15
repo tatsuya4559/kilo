@@ -24,6 +24,7 @@ module Escape_command = struct
   let cursor_topleft = "\x1b[H"
   let hide_cursor = "\x1b[?25l"
   let show_cursor = "\x1b[?25h"
+  let erase_right_of_cursor = "\x1b[K"
 end
 
 let write = output_string stdout
@@ -53,14 +54,15 @@ module Editor_config = struct
     Some { screenrows = rows; screencols = cols }
 
   let draw_rows t =
-    for _ = 1 to t.screenrows - 1 do
-      write "~\r\n"
-    done;
-    write "~"
+    for i = 1 to t.screenrows do
+      write "~";
+      write Escape_command.erase_right_of_cursor;
+      if i < t.screenrows then
+        write "\r\n"
+    done
 
   let refresh_screen t =
     write Escape_command.hide_cursor;
-    write Escape_command.clear_screen;
     write Escape_command.cursor_topleft;
     draw_rows t;
     write Escape_command.cursor_topleft;
