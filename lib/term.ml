@@ -1,3 +1,7 @@
+open Printf
+
+let kilo_version = "0.1"
+
 let with_raw_mode fn =
   let open Unix in
   let termios = tcgetattr stdin in
@@ -34,7 +38,7 @@ let die msg =
   write Escape_command.clear_screen;
   write Escape_command.cursor_topleft;
   flush ();
-  Printf.eprintf "%s\n" msg;
+  eprintf "%s\n" msg;
   exit 1
 
 let get_char () =
@@ -53,11 +57,20 @@ module Editor_config = struct
     let* cols = Terminal_size.get_columns () in
     Some { screenrows = rows; screencols = cols }
 
+  let welcome_string width =
+      let welcome = sprintf "Kilo editor -- version %s" kilo_version in
+      let padding = String.make (((width - String.length welcome) / 2) - 1) ' ' in
+      "~" ^ padding ^ welcome
+
   let draw_rows t =
-    for i = 1 to t.screenrows do
-      write "~";
+    for y = 1 to t.screenrows do
+      let row =
+        if y = t.screenrows / 3 then welcome_string t.screencols
+        else "~"
+      in
+      write row;
       write Escape_command.erase_right_of_cursor;
-      if i < t.screenrows then
+      if y < t.screenrows then
         write "\r\n"
     done
 
