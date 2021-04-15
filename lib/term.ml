@@ -22,6 +22,8 @@ let with_raw_mode fn =
 module Escape_command = struct
   let clear_screen = "\x1b[2J"
   let cursor_topleft = "\x1b[H"
+  let hide_cursor = "\x1b[?25l"
+  let show_cursor = "\x1b[?25h"
 end
 
 let write = output_string stdout
@@ -57,10 +59,12 @@ module Editor_config = struct
     write "~"
 
   let refresh_screen t =
+    write Escape_command.hide_cursor;
     write Escape_command.clear_screen;
     write Escape_command.cursor_topleft;
     draw_rows t;
     write Escape_command.cursor_topleft;
+    write Escape_command.show_cursor;
     flush ()
 end
 
