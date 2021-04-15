@@ -51,9 +51,10 @@ module Editor_config = struct
     Some { screenrows = rows; screencols = cols }
 
   let draw_rows t =
-    for _ = 1 to t.screenrows do
+    for _ = 1 to t.screenrows - 1 do
       write "~\r\n"
-    done
+    done;
+    write "~"
 
   let refresh_screen t =
     write Escape_command.clear_screen;
