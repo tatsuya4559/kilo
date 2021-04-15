@@ -29,10 +29,15 @@ module Escape_command = struct
   let hide_cursor = "\x1b[?25l"
   let show_cursor = "\x1b[?25h"
   let erase_right_of_cursor = "\x1b[K"
+  (* y and x are indexes that start from 0 *)
+  let move_cursor y x = sprintf "\x1b[%d;%dH" (y+1) (x+1)
 end
 
 let write = output_string stdout
 let flush () = flush stdout
+
+let ctrl c =
+  Char.chr ((Char.code c) land 0x1f)
 
 let die msg =
   write Escape_command.clear_screen;
@@ -49,13 +54,16 @@ module Editor_config = struct
   type t = {
     screenrows: int;
     screencols: int;
+    (* cursor position *)
+    mutable cx: int;
+    mutable cy: int;
   }
 
   let create () =
     let open Option_monad in
     let* rows = Terminal_size.get_rows () in
     let* cols = Terminal_size.get_columns () in
-    Some { screenrows = rows; screencols = cols }
+    Some { screenrows = rows; screencols = cols; cx = 0; cy = 0 }
 
   let welcome_string width =
       let welcome = sprintf "Kilo editor -- version %s" kilo_version in
@@ -78,19 +86,23 @@ module Editor_config = struct
     write Escape_command.hide_cursor;
     write Escape_command.cursor_topleft;
     draw_rows t;
-    write Escape_command.cursor_topleft;
+
+    write @@ Escape_command.move_cursor t.cy t.cx;
     write Escape_command.show_cursor;
     flush ()
+
+  let rec process_keypress t =
+    refresh_screen t;
+    match get_char () with
+    (* quit *)
+    | c when c = ctrl 'q' ->
+        write Escape_command.clear_screen;
+        write Escape_command.cursor_topleft;
+        flush ()
+    (* move cursor *)
+    | 'h' -> t.cx <- t.cx - 1; process_keypress t
+    | 'j' -> t.cy <- t.cy + 1; process_keypress t
+    | 'k' -> t.cy <- t.cy - 1; process_keypress t
+    | 'l' -> t.cx <- t.cx + 1; process_keypress t
+    | _ -> process_keypress t
 end
-
-
-let ctrl c =
-  Char.chr ((Char.code c) land 0x1f)
-
-let rec process_keypress () =
-  match get_char () with
-  | c when c = ctrl 'q' ->
-      write Escape_command.clear_screen;
-      write Escape_command.cursor_topleft;
-      flush ()
-  | _ -> process_keypress ()

@@ -8,5 +8,4 @@ let () =
       | None -> Term.die "fail to create editor config"
       | Some x -> x
     in
-    Editor_config.refresh_screen editor_config;
-    process_keypress ())
+    Editor_config.process_keypress editor_config)
