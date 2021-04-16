@@ -65,7 +65,6 @@ let read_key () =
       try
         let first = input_char stdin in
         let second = input_char stdin in
-        (* convert arrow keys to hjkl *)
         match (first, second) with
         | '[', 'A' -> `Arrow_up
         | '[', 'B' -> `Arrow_down
@@ -113,10 +112,15 @@ module Editor_config = struct
     write Escape_command.hide_cursor;
     write Escape_command.cursor_topleft;
     draw_rows t;
-
     write @@ Escape_command.move_cursor t.cy t.cx;
     write Escape_command.show_cursor;
     flush ()
+
+  let move_cursor t = function
+    | `Up -> if t.cy > 0 then t.cy <- t.cy - 1
+    | `Down -> if t.cy < t.screenrows - 1 then t.cy <- t.cy + 1
+    | `Right -> if t.cx < t.screencols - 1 then t.cx <- t.cx + 1
+    | `Left -> if t.cx > 0 then t.cx <- t.cx - 1
 
   let rec process_keypress t =
     refresh_screen t;
@@ -127,9 +131,9 @@ module Editor_config = struct
         write Escape_command.cursor_topleft;
         flush ()
     (* move cursor *)
-    | `Arrow_up | `Ch 'k' -> t.cy <- t.cy - 1; process_keypress t
-    | `Arrow_down | `Ch 'j' -> t.cy <- t.cy + 1; process_keypress t
-    | `Arrow_right | `Ch 'l' -> t.cx <- t.cx + 1; process_keypress t
-    | `Arrow_left | `Ch 'h' -> t.cx <- t.cx - 1; process_keypress t
+    | `Arrow_up | `Ch 'k' -> move_cursor t `Up; process_keypress t
+    | `Arrow_down | `Ch 'j' -> move_cursor t `Down; process_keypress t
+    | `Arrow_right | `Ch 'l' -> move_cursor t `Right; process_keypress t
+    | `Arrow_left | `Ch 'h' -> move_cursor t `Left; process_keypress t
     | _ -> process_keypress t
 end
