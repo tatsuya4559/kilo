@@ -1,5 +1,4 @@
 open Printf
-open Util
 
 let kilo_version = "0.1"
 
@@ -54,6 +53,8 @@ type key =
   | Arrow_left
   | Page_up
   | Page_down
+  | Home
+  | End
   | Ch of char
 
 let read_key () =
@@ -68,12 +69,20 @@ let read_key () =
         | '[', 'B' -> Arrow_down
         | '[', 'C' -> Arrow_right
         | '[', 'D' -> Arrow_left
+        | '[', 'H' -> Home
+        | '[', 'F' -> End
         | '[', second when '0' <= second && second <= '9' ->
             let third = input_char stdin in
             (match (second, third) with
+            | '1', '~' -> Home
+            | '4', '~' -> End
             | '5', '~' -> Page_up
             | '6', '~' -> Page_down
+            | '7', '~' -> Home
+            | '8', '~' -> End
             | _, _ -> Ch '\x1b')
+        | 'O', 'H' -> Home
+        | 'O', 'F' -> End
         | _, _ -> Ch '\x1b'
       with End_of_file (* time out *) -> Ch '\x1b'
     end else
@@ -129,6 +138,10 @@ end = struct
     | `Down -> if t.cy < t.screenrows - 1 then t.cy <- t.cy + 1
     | `Right -> if t.cx < t.screencols - 1 then t.cx <- t.cx + 1
     | `Left -> if t.cx > 0 then t.cx <- t.cx - 1
+    | `Top -> t.cy <- 0
+    | `Bottom -> t.cy <- t.screenrows - 1
+    | `Head -> t.cx <- 0
+    | `Tail -> t.cx <- t.screencols - 1
 
   let rec process_keypress t =
     refresh_screen t;
@@ -143,7 +156,9 @@ end = struct
     | Arrow_down | Ch 'j' -> move_cursor t `Down; process_keypress t
     | Arrow_right | Ch 'l' -> move_cursor t `Right; process_keypress t
     | Arrow_left | Ch 'h' -> move_cursor t `Left; process_keypress t
-    | Page_up -> Repeat.times t.screenrows (fun () -> move_cursor t `Up); process_keypress t
-    | Page_down -> Repeat.times t.screenrows (fun () -> move_cursor t `Down); process_keypress t
+    | Page_up -> move_cursor t `Top; process_keypress t
+    | Page_down -> move_cursor t `Bottom; process_keypress t
+    | Home -> move_cursor t `Head; process_keypress t
+    | End -> move_cursor t `Tail; process_keypress t
     | _ -> process_keypress t
 end
