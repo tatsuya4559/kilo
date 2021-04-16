@@ -1,4 +1,5 @@
 open Printf
+open Util
 
 let kilo_version = "0.1"
 
@@ -46,17 +47,14 @@ let die msg =
   eprintf "%s\n" msg;
   exit 1
 
-type arrow_key = [
-  | `Arrow_up
-  | `Arrow_down
-  | `Arrow_right
-  | `Arrow_left
-]
-
-type key = [
-  | arrow_key
-  | `Ch of char
-]
+type key =
+  | Arrow_up
+  | Arrow_down
+  | Arrow_right
+  | Arrow_left
+  | Page_up
+  | Page_down
+  | Ch of char
 
 let read_key () =
   try
@@ -66,17 +64,27 @@ let read_key () =
         let first = input_char stdin in
         let second = input_char stdin in
         match (first, second) with
-        | '[', 'A' -> `Arrow_up
-        | '[', 'B' -> `Arrow_down
-        | '[', 'C' -> `Arrow_right
-        | '[', 'D' -> `Arrow_left
-        | _, _ -> `Ch '\x1b'
-      with End_of_file (* time out *) -> `Ch '\x1b'
+        | '[', 'A' -> Arrow_up
+        | '[', 'B' -> Arrow_down
+        | '[', 'C' -> Arrow_right
+        | '[', 'D' -> Arrow_left
+        | '[', second when '0' <= second && second <= '9' ->
+            let third = input_char stdin in
+            (match (second, third) with
+            | '5', '~' -> Page_up
+            | '6', '~' -> Page_down
+            | _, _ -> Ch '\x1b')
+        | _, _ -> Ch '\x1b'
+      with End_of_file (* time out *) -> Ch '\x1b'
     end else
-      `Ch c
-  with End_of_file -> `Ch '\000'
+      Ch c
+  with End_of_file -> Ch '\000'
 
-module Editor_config = struct
+module Editor_config : sig
+  type t
+  val create : unit -> t option
+  val process_keypress : t -> unit
+end = struct
   type t = {
     screenrows: int;
     screencols: int;
@@ -126,14 +134,16 @@ module Editor_config = struct
     refresh_screen t;
     match read_key () with
     (* quit *)
-    | `Ch c when c = ctrl 'q' ->
+    | Ch c when c = ctrl 'q' ->
         write Escape_command.clear_screen;
         write Escape_command.cursor_topleft;
         flush ()
     (* move cursor *)
-    | `Arrow_up | `Ch 'k' -> move_cursor t `Up; process_keypress t
-    | `Arrow_down | `Ch 'j' -> move_cursor t `Down; process_keypress t
-    | `Arrow_right | `Ch 'l' -> move_cursor t `Right; process_keypress t
-    | `Arrow_left | `Ch 'h' -> move_cursor t `Left; process_keypress t
+    | Arrow_up | Ch 'k' -> move_cursor t `Up; process_keypress t
+    | Arrow_down | Ch 'j' -> move_cursor t `Down; process_keypress t
+    | Arrow_right | Ch 'l' -> move_cursor t `Right; process_keypress t
+    | Arrow_left | Ch 'h' -> move_cursor t `Left; process_keypress t
+    | Page_up -> Repeat.times t.screenrows (fun () -> move_cursor t `Up); process_keypress t
+    | Page_down -> Repeat.times t.screenrows (fun () -> move_cursor t `Down); process_keypress t
     | _ -> process_keypress t
 end
