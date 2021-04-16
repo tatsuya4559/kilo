@@ -46,9 +46,36 @@ let die msg =
   eprintf "%s\n" msg;
   exit 1
 
-let get_char () =
-  try input_char stdin
-  with End_of_file -> '\000'
+type arrow_key = [
+  | `Arrow_up
+  | `Arrow_down
+  | `Arrow_right
+  | `Arrow_left
+]
+
+type key = [
+  | arrow_key
+  | `Ch of char
+]
+
+let read_key () =
+  try
+    let c = input_char stdin in
+    if c = '\x1b' (* escape *) then begin
+      try
+        let first = input_char stdin in
+        let second = input_char stdin in
+        (* convert arrow keys to hjkl *)
+        match (first, second) with
+        | '[', 'A' -> `Arrow_up
+        | '[', 'B' -> `Arrow_down
+        | '[', 'C' -> `Arrow_right
+        | '[', 'D' -> `Arrow_left
+        | _, _ -> `Ch '\x1b'
+      with End_of_file (* time out *) -> `Ch '\x1b'
+    end else
+      `Ch c
+  with End_of_file -> `Ch '\000'
 
 module Editor_config = struct
   type t = {
@@ -93,16 +120,16 @@ module Editor_config = struct
 
   let rec process_keypress t =
     refresh_screen t;
-    match get_char () with
+    match read_key () with
     (* quit *)
-    | c when c = ctrl 'q' ->
+    | `Ch c when c = ctrl 'q' ->
         write Escape_command.clear_screen;
         write Escape_command.cursor_topleft;
         flush ()
     (* move cursor *)
-    | 'h' -> t.cx <- t.cx - 1; process_keypress t
-    | 'j' -> t.cy <- t.cy + 1; process_keypress t
-    | 'k' -> t.cy <- t.cy - 1; process_keypress t
-    | 'l' -> t.cx <- t.cx + 1; process_keypress t
+    | `Arrow_up | `Ch 'k' -> t.cy <- t.cy - 1; process_keypress t
+    | `Arrow_down | `Ch 'j' -> t.cy <- t.cy + 1; process_keypress t
+    | `Arrow_right | `Ch 'l' -> t.cx <- t.cx + 1; process_keypress t
+    | `Arrow_left | `Ch 'h' -> t.cx <- t.cx - 1; process_keypress t
     | _ -> process_keypress t
 end
