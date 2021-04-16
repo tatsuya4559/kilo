@@ -94,6 +94,7 @@ let read_key () =
 module Editor_config : sig
   type t
   val create : unit -> t option
+  val open_file : t -> string -> t
   val process_keypress : t -> unit
 end = struct
   type t = {
@@ -102,13 +103,26 @@ end = struct
     (* cursor position *)
     mutable cx: int;
     mutable cy: int;
+    (* contents *)
+    numrows: int;
+    row: string;
   }
 
   let create () =
     let open Option_monad in
     let* rows = Terminal_size.get_rows () in
     let* cols = Terminal_size.get_columns () in
-    Some { screenrows = rows; screencols = cols; cx = 0; cy = 0 }
+    Some { screenrows = rows;
+           screencols = cols;
+           cx = 0;
+           cy = 0;
+           numrows = 0;
+           row = "";
+         }
+
+  let open_file t filename =
+    let line = BatFile.with_file_in filename (fun input -> BatIO.read_line input) in
+    { t with numrows = 1; row = line }
 
   let welcome_string width =
       let welcome = sprintf "Kilo editor -- version %s" kilo_version in
@@ -118,7 +132,11 @@ end = struct
   let draw_rows t =
     for y = 1 to t.screenrows do
       let row =
-        if y = t.screenrows / 3 then welcome_string t.screencols
+        (* text buffer *)
+        if y <= t.numrows then t.row
+        (* welcome text *)
+        else if y = t.screenrows / 3 then welcome_string t.screencols
+        (* out of buffer *)
         else "~"
       in
       write row;
