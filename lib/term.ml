@@ -55,6 +55,7 @@ type key =
   | Page_down
   | Home
   | End
+  | Del
   | Ch of char
 
 let read_key () =
@@ -75,6 +76,7 @@ let read_key () =
             let third = input_char stdin in
             (match (second, third) with
             | '1', '~' -> Home
+            | '3', '~' -> Del
             | '4', '~' -> End
             | '5', '~' -> Page_up
             | '6', '~' -> Page_down
