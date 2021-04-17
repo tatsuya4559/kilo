@@ -251,6 +251,8 @@ end = struct
       | `Bottom -> t.cx, numrows t - 1
       | `Head -> 0, t.cy
       | `Tail -> numcols t - 1, t.cy
+      | `Full_up -> t.cx, t.rowoff - t.screenrows
+      | `Full_down -> t.cx, t.rowoff + 2 * t.screenrows - 1
     in
     (* update y first because the max length of row depends on t.cy *)
     t.cy <- if cy < 0 then 0 else if cy > numrows t then numrows t else cy;
@@ -269,8 +271,8 @@ end = struct
     | Arrow_down | Ch 'j' -> move_cursor t `Down; process_keypress t
     | Arrow_right | Ch 'l' -> move_cursor t `Right; process_keypress t
     | Arrow_left | Ch 'h' -> move_cursor t `Left; process_keypress t
-    | Page_up -> move_cursor t `Top; process_keypress t
-    | Page_down -> move_cursor t `Bottom; process_keypress t
+    | Page_up -> move_cursor t `Full_up; process_keypress t
+    | Page_down -> move_cursor t `Full_down; process_keypress t
     | Home -> move_cursor t `Head; process_keypress t
     | End -> move_cursor t `Tail; process_keypress t
     | _ -> process_keypress t
