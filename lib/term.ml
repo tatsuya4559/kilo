@@ -113,7 +113,7 @@ module Editor_buffer = struct
     if row_len <= x then
       ""
     else
-      StringLabels.sub row ~pos:x ~len:(BatInt.min len (row_len - x - 1))
+      StringLabels.sub row ~pos:x ~len:(BatInt.min len (row_len - x))
 end
 
 module Editor_config : sig
