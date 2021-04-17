@@ -200,16 +200,14 @@ end = struct
 
   (* update rowoff if cursor is out of screen *)
   let scroll t =
-    if t.cy < t.rowoff then
-      t.rowoff <- t.cy
-    else if t.cy >= t.rowoff + t.screenrows then begin
-      t.rowoff <- t.cy - t.screenrows + 1
-    end;
-    if t.cx < t.coloff then
-      t.coloff <- t.cx
-    else if t.cx >= t.coloff + t.screencols then begin
-      t.coloff <- t.cx - t.screencols + 1
-    end
+    t.rowoff <-
+      if t.cy < t.rowoff then t.cy
+      else if t.cy >= t.rowoff + t.screenrows then t.cy - t.screenrows + 1
+      else t.rowoff;
+    t.coloff <-
+      if t.cx < t.coloff then t.cx
+      else if t.cx >= t.coloff + t.screencols then t.cx - t.screencols + 1
+      else t.coloff
 
   let refresh_screen t =
     scroll t;
