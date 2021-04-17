@@ -91,6 +91,21 @@ let read_key () =
       Ch c
   with End_of_file -> Ch '\000'
 
+(* TODO: gap buffer *)
+module Editor_buffer = struct
+  (* buffer state should be immutable for undoing *)
+  type t = {
+    content: string list;
+  }
+
+  let empty = { content = [] }
+
+  let length t = List.length t.content
+
+  let append_row t row =
+    { content = t.content @ [row] }
+end
+
 module Editor_config : sig
   type t
   val create : unit -> t option
@@ -104,8 +119,7 @@ end = struct
     mutable cx: int;
     mutable cy: int;
     (* contents *)
-    numrows: int;
-    row: string;
+    buf: Editor_buffer.t;
   }
 
   let create () =
@@ -116,13 +130,22 @@ end = struct
            screencols = cols;
            cx = 0;
            cy = 0;
-           numrows = 0;
-           row = "";
+           buf = Editor_buffer.empty;
          }
 
+  let numrows t =
+    Editor_buffer.length t.buf
+
   let open_file t filename =
-    let line = BatFile.with_file_in filename (fun input -> BatIO.read_line input) in
-    { t with numrows = 1; row = line }
+    let buf = BatFile.with_file_in filename (fun input ->
+      let rec readline input buf =
+        try
+          readline input (Editor_buffer.append_row buf (BatIO.read_line input))
+        with BatIO.No_more_input -> buf
+      in
+      readline input Editor_buffer.empty
+    ) in
+    { t with buf }
 
   let welcome_string width =
       let welcome = sprintf "Kilo editor -- version %s" kilo_version in
@@ -130,18 +153,18 @@ end = struct
       "~" ^ padding ^ welcome
 
   let draw_rows t =
-    for y = 1 to t.screenrows do
+    for y = 0 to t.screenrows - 1 do
       let row =
         (* text buffer *)
-        if y <= t.numrows then t.row
+        if y < numrows t then List.nth t.buf.content y
         (* welcome text *)
-        else if t.numrows = 0 && y = t.screenrows / 3 then welcome_string t.screencols
+        else if numrows t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
       in
       write row;
       write Escape_command.erase_right_of_cursor;
-      if y < t.screenrows then
+      if y < t.screenrows - 1 then
         write "\r\n"
     done
 
