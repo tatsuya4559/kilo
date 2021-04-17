@@ -221,16 +221,19 @@ end = struct
     flush ()
 
   let move_cursor t dir =
-    let cols = numcols t in
-    match dir with
-    | `Up -> if t.cy > 0 then t.cy <- t.cy - 1
-    | `Down -> if t.cy < numrows t then t.cy <- t.cy + 1
-    | `Right -> if t.cx < cols then t.cx <- t.cx + 1
-    | `Left -> if t.cx > 0 then t.cx <- t.cx - 1
-    | `Top -> t.cy <- 0
-    | `Bottom -> t.cy <- numrows t - 1
-    | `Head -> t.cx <- 0
-    | `Tail -> t.cx <- cols - 1
+    let cx, cy = match dir with
+      | `Up -> t.cx, t.cy - 1
+      | `Down -> t.cx, t.cy + 1
+      | `Right -> t.cx + 1, t.cy
+      | `Left -> t.cx - 1, t.cy
+      | `Top -> t.cx, 0
+      | `Bottom -> t.cx, numrows t - 1
+      | `Head -> 0, t.cy
+      | `Tail -> numcols t - 1, t.cy
+    in
+    (* update y first because the max length of row depends on t.cy *)
+    t.cy <- if cy < 0 then 0 else if cy > numrows t then numrows t else cy;
+    t.cx <- if cx < 0 then 0 else if cx > numcols t then numcols t else cx
 
   let rec process_keypress t =
     refresh_screen t;
