@@ -148,9 +148,9 @@ end = struct
     { t with buf }
 
   let welcome_string width =
-      let welcome = sprintf "Kilo editor -- version %s" kilo_version in
-      let padding = String.make (((width - String.length welcome) / 2) - 1) ' ' in
-      "~" ^ padding ^ welcome
+    let welcome = sprintf "Kilo editor -- version %s" kilo_version in
+    let padding = String.make (((width - String.length welcome) / 2) - 1) ' ' in
+    "~" ^ padding ^ welcome
 
   let draw_rows t =
     for y = 0 to t.screenrows - 1 do
