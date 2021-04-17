@@ -135,7 +135,7 @@ end = struct
         (* text buffer *)
         if y <= t.numrows then t.row
         (* welcome text *)
-        else if y = t.screenrows / 3 then welcome_string t.screencols
+        else if t.numrows = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
       in
