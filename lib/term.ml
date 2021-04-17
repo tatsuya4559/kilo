@@ -110,9 +110,13 @@ module Editor_buffer = struct
 end
 
 module Editor_config : sig
+  (** global state of editor *)
   type t
+  (** create new editor state *)
   val create : unit -> t option
+  (** read content from file *)
   val open_file : t -> string -> t
+  (** wait and process keypress *)
   val process_keypress : t -> unit
 end = struct
   type t = {
@@ -139,6 +143,7 @@ end = struct
            buf = Editor_buffer.empty;
          }
 
+  (* shorthand for Editor_buffer.numrows *)
   let numrows t =
     Editor_buffer.numrows t.buf
 
@@ -175,6 +180,7 @@ end = struct
         write "\r\n"
     done
 
+  (* update rowoff if cursor is out of screen *)
   let scroll t =
     if t.cy < t.rowoff then
       t.rowoff <- t.cy
