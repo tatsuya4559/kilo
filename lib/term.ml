@@ -159,6 +159,8 @@ module Editor_config : sig
   val create : unit -> t option
   (** read content from file *)
   val open_file : t -> string -> t
+  (** set status message *)
+  val set_statusmsg : t -> string -> unit
   (** wait and process keypress *)
   val process_keypress : t -> unit
 end = struct
@@ -173,19 +175,24 @@ end = struct
     mutable coloff: int;
     (* contents *)
     buf: Editor_buffer.t;
+    (* status message *)
+    mutable statusmsg: string;
+    mutable statusmsg_time: float; (* UNIX time in seconds *)
   }
 
   let create () =
     let open Option_monad in
     let* rows = Terminal_size.get_rows () in
     let* cols = Terminal_size.get_columns () in
-    Some { screenrows = rows - 1; (* -1 to make room for status bar *)
+    Some { screenrows = rows - 2; (* -2 to make room for status bar and message *)
            screencols = cols;
            cx = 0;
            cy = 0;
            rowoff = 0;
            coloff = 0;
            buf = Editor_buffer.create "[No Name]";
+           statusmsg = "";
+           statusmsg_time = 0.;
          }
 
   (* shorthand for Editor_buffer.numrows *)
@@ -195,6 +202,10 @@ end = struct
   (* shorthand for Editor_buffer.numcols *)
   let numcols t =
     Editor_buffer.numcols t.buf t.cy
+
+  let set_statusmsg t msg =
+    t.statusmsg <- msg;
+    t.statusmsg_time <- Unix.time ()
 
   let open_file t filename =
     let buf = BatFile.with_file_in filename (fun input ->
@@ -235,7 +246,14 @@ end = struct
       ~left:(sprintf "%s - %d lines" filename (numrows t))
       ~right:(sprintf "%d/%d" (t.cy + 1) (numrows t))
     in
-    write @@ Escape_command.inverted_text bar
+    write @@ Escape_command.inverted_text bar;
+    write "\r\n"
+
+  let draw_message_bar t =
+    write Escape_command.erase_right_of_cursor;
+    write @@ if (Unix.time () -. t.statusmsg_time) < 5.
+        then t.statusmsg
+        else ""
 
   (* update rowoff if cursor is out of screen *)
   let scroll t =
@@ -254,6 +272,7 @@ end = struct
     write Escape_command.cursor_topleft;
     draw_rows t;
     draw_status_bar t;
+    draw_message_bar t;
     write @@ Escape_command.move_cursor (t.cy - t.rowoff) (t.cx - t.coloff);
     write Escape_command.show_cursor;
     flush ()
