@@ -1,6 +1,9 @@
 open Printf
 
+(* constants *)
 let kilo_version = "0.1"
+let kilo_tabstop = 8
+
 
 let with_raw_mode fn =
   let open Unix in
@@ -92,10 +95,30 @@ let read_key () =
   with End_of_file -> Ch '\000'
 
 (* TODO: gap buffer *)
-module Editor_buffer = struct
+module Editor_buffer : sig
+  type t
+  val empty : t
+  val numrows : t -> int
+  val numcols : t -> int -> int
+  val append_row : t -> string -> t
+  val get : y:int -> x:int -> len:int -> t -> string
+end = struct
+  let rendered_tab = String.make kilo_tabstop ' '
+
+  type row = {
+    (* actual string *)
+    raw_string: string;
+    (* string to be rendered *)
+    render_string: string;
+  }
+
+  let render raw =
+    (* render a tab as `kilo_tabstop` spaces *)
+    BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
+
   (* buffer state should be immutable for undoing *)
   type t = {
-    content: string list;
+    content: row list;
   }
 
   let empty = { content = [] }
@@ -104,20 +127,20 @@ module Editor_buffer = struct
   let numcols t y =
     match List.nth_opt t.content y with
     | None -> 0
-    | Some row -> String.length row
+    | Some row -> String.length row.render_string
 
-  let append_row t row =
-    { content = t.content @ [row] }
+  let append_row t raw_string =
+    { content = t.content @ [{raw_string; render_string = render raw_string }] }
 
   (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
    *  x and y are indexes from 0. *)
   let get ~y ~x ~len t =
-    let row = List.nth t.content y in
-    let row_len = String.length row in
+    let row_str = (List.nth t.content y).render_string in
+    let row_len = String.length row_str in
     if row_len <= x then
       ""
     else
-      StringLabels.sub row ~pos:x ~len:(BatInt.min len (row_len - x))
+      StringLabels.sub row_str ~pos:x ~len:(BatInt.min len (row_len - x))
 end
 
 module Editor_config : sig
