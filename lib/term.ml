@@ -1,4 +1,5 @@
 open Printf
+open Util
 
 (* constants *)
 let kilo_version = "0.1"
@@ -34,6 +35,10 @@ module Escape_command = struct
   let erase_right_of_cursor = "\x1b[K"
   (* y and x are indexes that start from 0 *)
   let move_cursor y x = sprintf "\x1b[%d;%dH" (y+1) (x+1)
+  let bold_text s = sprintf "\x1b[1m%s\x1b[m" s
+  let underlined_text s = sprintf "\x1b[4m%s\x1b[m" s
+  let blinking_text s = sprintf "\x1b[5m%s\x1b[m" s
+  let inverted_text s = sprintf "\x1b[7m%s\x1b[m" s
 end
 
 let write = output_string stdout
@@ -97,7 +102,8 @@ let read_key () =
 (* TODO: gap buffer *)
 module Editor_buffer : sig
   type t
-  val empty : t
+  val create : string -> t
+  val filename : t -> string
   val numrows : t -> int
   val numcols : t -> int -> int
   val append_row : t -> string -> t
@@ -118,10 +124,13 @@ end = struct
 
   (* buffer state should be immutable for undoing *)
   type t = {
+    filename: string;
     content: row list;
   }
 
-  let empty = { content = [] }
+  let create filename = { filename; content = [] }
+
+  let filename t = t.filename
 
   let numrows t = List.length t.content
   let numcols t y =
@@ -130,7 +139,7 @@ end = struct
     | Some row -> String.length row.render_string
 
   let append_row t raw_string =
-    { content = t.content @ [{raw_string; render_string = render raw_string }] }
+    { t with content = t.content @ [{raw_string; render_string = render raw_string }] }
 
   (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
    *  x and y are indexes from 0. *)
@@ -170,13 +179,13 @@ end = struct
     let open Option_monad in
     let* rows = Terminal_size.get_rows () in
     let* cols = Terminal_size.get_columns () in
-    Some { screenrows = rows;
+    Some { screenrows = rows - 1; (* -1 to make room for status bar *)
            screencols = cols;
            cx = 0;
            cy = 0;
            rowoff = 0;
            coloff = 0;
-           buf = Editor_buffer.empty;
+           buf = Editor_buffer.create "[No Name]";
          }
 
   (* shorthand for Editor_buffer.numrows *)
@@ -194,7 +203,7 @@ end = struct
           readline input (Editor_buffer.append_row buf (BatIO.read_line input))
         with BatIO.No_more_input -> buf
       in
-      readline input Editor_buffer.empty
+      readline input (Editor_buffer.create filename)
     ) in
     { t with buf }
 
@@ -217,9 +226,16 @@ end = struct
       in
       write row;
       write Escape_command.erase_right_of_cursor;
-      if y < t.screenrows - 1 then
-        write "\r\n"
+      write "\r\n"
     done
+
+  let draw_status_bar t =
+    let filename = Editor_buffer.filename t.buf in
+    let bar = StringFormat.fit t.screencols
+      ~left:(sprintf "%s - %d lines" filename (numrows t))
+      ~right:(sprintf "%d/%d" (t.cy + 1) (numrows t))
+    in
+    write @@ Escape_command.inverted_text bar
 
   (* update rowoff if cursor is out of screen *)
   let scroll t =
@@ -237,6 +253,7 @@ end = struct
     write Escape_command.hide_cursor;
     write Escape_command.cursor_topleft;
     draw_rows t;
+    draw_status_bar t;
     write @@ Escape_command.move_cursor (t.cy - t.rowoff) (t.cx - t.coloff);
     write Escape_command.show_cursor;
     flush ()
