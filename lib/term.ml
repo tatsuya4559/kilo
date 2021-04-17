@@ -105,8 +105,15 @@ module Editor_buffer = struct
   let append_row t row =
     { content = t.content @ [row] }
 
-  let get_row t n =
-    List.nth t.content n
+  (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
+   *  x and y are indexes from 0. *)
+  let get ~y ~x ~len t =
+    let row = List.nth t.content y in
+    let row_len = String.length row in
+    if row_len <= x then
+      ""
+    else
+      StringLabels.sub row ~pos:x ~len:(BatInt.min len (row_len - x - 1))
 end
 
 module Editor_config : sig
@@ -125,8 +132,9 @@ end = struct
     (* cursor position *)
     mutable cx: int;
     mutable cy: int;
-    (* row offset *)
+    (* offsets *)
     mutable rowoff: int;
+    mutable coloff: int;
     (* contents *)
     buf: Editor_buffer.t;
   }
@@ -140,6 +148,7 @@ end = struct
            cx = 0;
            cy = 0;
            rowoff = 0;
+           coloff = 0;
            buf = Editor_buffer.empty;
          }
 
@@ -168,7 +177,8 @@ end = struct
       let filerow = y + t.rowoff in
       let row =
         (* text buffer *)
-        if filerow < numrows t then Editor_buffer.get_row t.buf filerow
+        if filerow < numrows t then
+          Editor_buffer.get t.buf ~y:filerow ~x:t.coloff ~len:(t.screencols)
         (* welcome text *)
         else if numrows t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
@@ -184,22 +194,28 @@ end = struct
   let scroll t =
     if t.cy < t.rowoff then
       t.rowoff <- t.cy
-    else if t.cy >= t.rowoff + t.screenrows then
+    else if t.cy >= t.rowoff + t.screenrows then begin
       t.rowoff <- t.cy - t.screenrows + 1
+    end;
+    if t.cx < t.coloff then
+      t.coloff <- t.cx
+    else if t.cx >= t.coloff + t.screencols then begin
+      t.coloff <- t.cx - t.screencols + 1
+    end
 
   let refresh_screen t =
     scroll t;
     write Escape_command.hide_cursor;
     write Escape_command.cursor_topleft;
     draw_rows t;
-    write @@ Escape_command.move_cursor (t.cy - t.rowoff) t.cx;
+    write @@ Escape_command.move_cursor (t.cy - t.rowoff) (t.cx - t.coloff);
     write Escape_command.show_cursor;
     flush ()
 
   let move_cursor t = function
     | `Up -> if t.cy > 0 then t.cy <- t.cy - 1
     | `Down -> if t.cy < numrows t then t.cy <- t.cy + 1
-    | `Right -> if t.cx < t.screencols - 1 then t.cx <- t.cx + 1
+    | `Right -> t.cx <- t.cx + 1
     | `Left -> if t.cx > 0 then t.cx <- t.cx - 1
     | `Top -> t.cy <- 0
     | `Bottom -> t.cy <- t.screenrows - 1
