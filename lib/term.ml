@@ -100,10 +100,13 @@ module Editor_buffer = struct
 
   let empty = { content = [] }
 
-  let length t = List.length t.content
+  let numrows t = List.length t.content
 
   let append_row t row =
     { content = t.content @ [row] }
+
+  let get_row t n =
+    List.nth t.content n
 end
 
 module Editor_config : sig
@@ -118,6 +121,8 @@ end = struct
     (* cursor position *)
     mutable cx: int;
     mutable cy: int;
+    (* row offset *)
+    mutable rowoff: int;
     (* contents *)
     buf: Editor_buffer.t;
   }
@@ -130,11 +135,12 @@ end = struct
            screencols = cols;
            cx = 0;
            cy = 0;
+           rowoff = 0;
            buf = Editor_buffer.empty;
          }
 
   let numrows t =
-    Editor_buffer.length t.buf
+    Editor_buffer.numrows t.buf
 
   let open_file t filename =
     let buf = BatFile.with_file_in filename (fun input ->
@@ -154,9 +160,10 @@ end = struct
 
   let draw_rows t =
     for y = 0 to t.screenrows - 1 do
+      let filerow = y + t.rowoff in
       let row =
         (* text buffer *)
-        if y < numrows t then List.nth t.buf.content y
+        if filerow < numrows t then Editor_buffer.get_row t.buf filerow
         (* welcome text *)
         else if numrows t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
@@ -168,17 +175,24 @@ end = struct
         write "\r\n"
     done
 
+  let scroll t =
+    if t.cy < t.rowoff then
+      t.rowoff <- t.cy
+    else if t.cy >= t.rowoff + t.screenrows then
+      t.rowoff <- t.cy - t.screenrows + 1
+
   let refresh_screen t =
+    scroll t;
     write Escape_command.hide_cursor;
     write Escape_command.cursor_topleft;
     draw_rows t;
-    write @@ Escape_command.move_cursor t.cy t.cx;
+    write @@ Escape_command.move_cursor (t.cy - t.rowoff) t.cx;
     write Escape_command.show_cursor;
     flush ()
 
   let move_cursor t = function
     | `Up -> if t.cy > 0 then t.cy <- t.cy - 1
-    | `Down -> if t.cy < t.screenrows - 1 then t.cy <- t.cy + 1
+    | `Down -> if t.cy < numrows t then t.cy <- t.cy + 1
     | `Right -> if t.cx < t.screencols - 1 then t.cx <- t.cx + 1
     | `Left -> if t.cx > 0 then t.cx <- t.cx - 1
     | `Top -> t.cy <- 0
