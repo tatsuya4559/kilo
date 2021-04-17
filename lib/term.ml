@@ -101,6 +101,10 @@ module Editor_buffer = struct
   let empty = { content = [] }
 
   let numrows t = List.length t.content
+  let numcols t y =
+    match List.nth_opt t.content y with
+    | None -> 0
+    | Some row -> String.length row
 
   let append_row t row =
     { content = t.content @ [row] }
@@ -155,6 +159,10 @@ end = struct
   (* shorthand for Editor_buffer.numrows *)
   let numrows t =
     Editor_buffer.numrows t.buf
+
+  (* shorthand for Editor_buffer.numcols *)
+  let numcols t =
+    Editor_buffer.numcols t.buf t.cy
 
   let open_file t filename =
     let buf = BatFile.with_file_in filename (fun input ->
@@ -212,15 +220,17 @@ end = struct
     write Escape_command.show_cursor;
     flush ()
 
-  let move_cursor t = function
+  let move_cursor t dir =
+    let cols = numcols t in
+    match dir with
     | `Up -> if t.cy > 0 then t.cy <- t.cy - 1
     | `Down -> if t.cy < numrows t then t.cy <- t.cy + 1
-    | `Right -> t.cx <- t.cx + 1
+    | `Right -> if t.cx < cols then t.cx <- t.cx + 1
     | `Left -> if t.cx > 0 then t.cx <- t.cx - 1
     | `Top -> t.cy <- 0
-    | `Bottom -> t.cy <- t.screenrows - 1
+    | `Bottom -> t.cy <- numrows t - 1
     | `Head -> t.cx <- 0
-    | `Tail -> t.cx <- t.screencols - 1
+    | `Tail -> t.cx <- cols - 1
 
   let rec process_keypress t =
     refresh_screen t;
