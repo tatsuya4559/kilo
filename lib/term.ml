@@ -110,8 +110,7 @@ let read_key () =
 (* TODO: gap buffer *)
 module Editor_buffer : sig
   type t
-  val create : string -> t
-  val filename : t -> string
+  val create : unit -> t
   val numrows : t -> int
   val numcols : t -> int -> int
   val append_row : t -> string -> t
@@ -149,13 +148,10 @@ end = struct
   (*** buffer ***)
   (* buffer state should be immutable for undoing *)
   type t = {
-    filename: string;
     content: row list;
   }
 
-  let create filename = { filename; content = [] }
-
-  let filename t = t.filename
+  let create () = { content = [] }
 
   let numrows t = List.length t.content
   let numcols t y =
@@ -164,7 +160,7 @@ end = struct
     | Some row -> String.length row.render_string
 
   let append_row t raw_string =
-    { t with content = t.content @ [{raw_string; render_string = render raw_string }] }
+    { content = t.content @ [{raw_string; render_string = render raw_string }] }
 
   (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
    *  x and y are indexes from 0. *)
@@ -183,7 +179,7 @@ end = struct
       | _, _ -> assert false
     in
     let row = insert_char_to_row row x c in
-    { t with content = before @ [row] @ after }
+    { content = before @ [row] @ after }
 end
 
 module Editor_config : sig
@@ -208,6 +204,7 @@ end = struct
     mutable rowoff: int;
     mutable coloff: int;
     (* contents *)
+    filename: string;
     mutable buf: Editor_buffer.t;
     (* status message *)
     mutable statusmsg: string;
@@ -224,7 +221,8 @@ end = struct
            cy = 0;
            rowoff = 0;
            coloff = 0;
-           buf = Editor_buffer.create "[No Name]";
+           filename = "[No Name]";
+           buf = Editor_buffer.create ();
            statusmsg = "";
            statusmsg_time = 0.;
          }
@@ -248,9 +246,9 @@ end = struct
           readline input (Editor_buffer.append_row buf (BatIO.read_line input))
         with BatIO.No_more_input -> buf
       in
-      readline input (Editor_buffer.create filename)
+      readline input (Editor_buffer.create ())
     ) in
-    { t with buf }
+    { t with filename; buf }
 
   let welcome_string width =
     let welcome = sprintf "Kilo editor -- version %s" kilo_version in
@@ -275,9 +273,8 @@ end = struct
     done
 
   let draw_status_bar t =
-    let filename = Editor_buffer.filename t.buf in
     let bar = StringFormat.fit t.screencols
-      ~left:(sprintf "%s - %d lines" filename (numrows t))
+      ~left:(sprintf "%s - %d lines" t.filename (numrows t))
       ~right:(sprintf "%d/%d" (t.cy + 1) (numrows t))
     in
     write @@ Escape_command.inverted_text bar;
