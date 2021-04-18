@@ -54,7 +54,9 @@ let die msg =
   eprintf "%s\n" msg;
   exit 1
 
+(* TODO: distinguish ctrl, alt keys *)
 type key =
+  | Nothing
   | Arrow_up
   | Arrow_down
   | Arrow_right
@@ -64,6 +66,9 @@ type key =
   | Home
   | End
   | Del
+  | Backspace
+  | Enter
+  | Esc
   | Ch of char
 
 let read_key () =
@@ -90,14 +95,17 @@ let read_key () =
             | '6', '~' -> Page_down
             | '7', '~' -> Home
             | '8', '~' -> End
-            | _, _ -> Ch '\x1b')
+            | _, _ -> Esc)
         | 'O', 'H' -> Home
         | 'O', 'F' -> End
-        | _, _ -> Ch '\x1b'
-      with End_of_file (* time out *) -> Ch '\x1b'
+        | _, _ -> Esc
+      with End_of_file (* time out *) -> Esc
     end else
-      Ch c
-  with End_of_file -> Ch '\000'
+      match c with
+      | '\r' -> Enter
+      | '\127' -> Backspace
+      | _ -> Ch c
+  with End_of_file -> Nothing
 
 (* TODO: gap buffer *)
 module Editor_buffer : sig
@@ -108,9 +116,11 @@ module Editor_buffer : sig
   val numcols : t -> int -> int
   val append_row : t -> string -> t
   val get : y:int -> x:int -> len:int -> t -> string
+  val insert_char : t -> char -> y:int -> x:int -> t
 end = struct
   let rendered_tab = String.make kilo_tabstop ' '
 
+  (*** row ***)
   type row = {
     (* actual string *)
     raw_string: string;
@@ -122,6 +132,21 @@ end = struct
     (* render a tab as `kilo_tabstop` spaces *)
     BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
 
+  let raw_length row =
+    String.length row.raw_string
+
+  let slice s start stop =
+    StringLabels.sub s ~pos:start ~len:(stop - start)
+
+  let insert_char_to_row row at c =
+    let at = if at < 0 || at > raw_length row then raw_length row else at in
+    let raw_string = (slice row.raw_string 0 at)
+      ^ Char.escaped c
+      ^ (slice row.raw_string at (raw_length row))
+    in
+    { raw_string; render_string = render raw_string }
+
+  (*** buffer ***)
   (* buffer state should be immutable for undoing *)
   type t = {
     filename: string;
@@ -150,6 +175,15 @@ end = struct
       ""
     else
       StringLabels.sub row_str ~pos:x ~len:(BatInt.min len (row_len - x))
+
+  let insert_char t c ~y ~x =
+    let before, row, after =
+      match BatList.takedrop y t.content with
+      | before, row :: after -> before, row, after
+      | _, _ -> assert false
+    in
+    let row = insert_char_to_row row x c in
+    { t with content = before @ [row] @ after }
 end
 
 module Editor_config : sig
@@ -174,7 +208,7 @@ end = struct
     mutable rowoff: int;
     mutable coloff: int;
     (* contents *)
-    buf: Editor_buffer.t;
+    mutable buf: Editor_buffer.t;
     (* status message *)
     mutable statusmsg: string;
     mutable statusmsg_time: float; (* UNIX time in seconds *)
@@ -251,6 +285,7 @@ end = struct
 
   let draw_message_bar t =
     write Escape_command.erase_right_of_cursor;
+    (* show 5 seconds *)
     write @@ if (Unix.time () -. t.statusmsg_time) < 5.
         then t.statusmsg
         else ""
@@ -294,6 +329,13 @@ end = struct
     t.cy <- if cy < 0 then 0 else if cy > numrows t then numrows t else cy;
     t.cx <- if cx < 0 then 0 else if cx > numcols t then numcols t else cx
 
+  let insert_char t c =
+    let () = if t.cy = numrows t then
+      t.buf <- Editor_buffer.append_row t.buf ""
+    in
+    t.buf <- Editor_buffer.insert_char t.buf c ~y:t.cy ~x:t.cx;
+    t.cx <- t.cx + 1
+
   let rec process_keypress t =
     refresh_screen t;
     match read_key () with
@@ -303,13 +345,14 @@ end = struct
         write Escape_command.cursor_topleft;
         flush ()
     (* move cursor *)
-    | Arrow_up | Ch 'k' -> move_cursor t `Up; process_keypress t
-    | Arrow_down | Ch 'j' -> move_cursor t `Down; process_keypress t
-    | Arrow_right | Ch 'l' -> move_cursor t `Right; process_keypress t
-    | Arrow_left | Ch 'h' -> move_cursor t `Left; process_keypress t
+    | Arrow_up -> move_cursor t `Up; process_keypress t
+    | Arrow_down -> move_cursor t `Down; process_keypress t
+    | Arrow_right -> move_cursor t `Right; process_keypress t
+    | Arrow_left -> move_cursor t `Left; process_keypress t
     | Page_up -> move_cursor t `Full_up; process_keypress t
     | Page_down -> move_cursor t `Full_down; process_keypress t
     | Home -> move_cursor t `Head; process_keypress t
     | End -> move_cursor t `Tail; process_keypress t
+    | Ch c -> insert_char t c; process_keypress t
     | _ -> process_keypress t
 end
