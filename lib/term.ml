@@ -284,9 +284,9 @@ end = struct
       | `Right -> t.cx + 1, t.cy
       | `Left -> t.cx - 1, t.cy
       | `Top -> t.cx, 0
-      | `Bottom -> t.cx, numrows t - 1
+      | `Bottom -> t.cx, numrows t
       | `Head -> 0, t.cy
-      | `Tail -> numcols t - 1, t.cy
+      | `Tail -> numcols t, t.cy
       | `Full_up -> t.cx, t.rowoff - t.screenrows
       | `Full_down -> t.cx, t.rowoff + 2 * t.screenrows - 1
     in
