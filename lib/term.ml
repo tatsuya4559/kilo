@@ -109,13 +109,16 @@ let read_key () =
 
 module Editor_buffer : sig
   type t
+  (** create buffer with initial value *)
   val create : string -> t
   val rows : t -> int
   val cols : t -> int
   val next : t -> t
   val prev : t -> t
   val skip : t -> int -> t
-  val drop : t -> t
+  (** remove passed row then return next row *)
+  val drop_row : t -> t
+  (** append passed row then return pointer to the new row *)
   val append_row : t -> string -> t
   val insert_char : t -> char -> int -> unit
   val render : t -> string
@@ -125,13 +128,19 @@ end = struct
 
   type t = string BatDllist.t (* pointer to a line of buffer *)
 
+
+  let rendered_tab = String.make kilo_tabstop ' '
+  let render t =
+    let raw = DL.get t in
+    BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
+
   let create s = DL.create s
   let rows t = DL.length t
-  let cols t = String.length @@ DL.get t
+  let cols t = String.length @@ render t
   let next t = DL.next t
   let prev t = DL.prev t
   let skip t i = DL.skip t i
-  let drop t = DL.drop t
+  let drop_row t = DL.drop t
 
   let append_row t row =
     DL.append t row
@@ -142,18 +151,11 @@ end = struct
   let insert_char t c at =
     let row = DL.get t in
     DL.set t @@
-      (slice row 0 at) ^ Char.escaped c ^ (slice row at (String.length row))
-
-  let rendered_tab = String.make kilo_tabstop ' '
-  let render t =
-    (* TODO: render *)
-    let raw = DL.get t in
-    BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
+      (slice row 0 at) ^ (String.make 1 c) ^ (slice row at (String.length row))
 
   (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
    *  x and y are indexes from 0. *)
   let get ~y ~x ~len t =
-    let _ = x + len in
     let rendered = render @@ skip t y in
     let rendered_len = String.length rendered in
     if rendered_len <= x then
@@ -226,10 +228,10 @@ end = struct
         try
           readline input (Editor_buffer.append_row buf (BatIO.read_line input))
         with BatIO.No_more_input ->
-          (* drop first node with empty content *)
-          Editor_buffer.drop @@ Editor_buffer.next buf
+          (* return first line of buffer *)
+          Editor_buffer.next buf
       in
-      readline input (Editor_buffer.create "")
+      readline input (Editor_buffer.create (BatIO.read_line input))
     ) in
     { t with filename; first_line = buf; curr_line = buf }
 
@@ -246,7 +248,7 @@ end = struct
         if filerow < numrows t then begin
           Editor_buffer.get ~y:filerow ~x:t.coloff ~len:t.screencols t.first_line
         (* welcome text *)
-        end else if numrows t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
+        end else if numrows t = 1 && numcols t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
       in
