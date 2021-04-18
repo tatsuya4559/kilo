@@ -107,79 +107,59 @@ let read_key () =
       | _ -> Ch c
   with End_of_file -> Nothing
 
-(* TODO: gap buffer *)
 module Editor_buffer : sig
   type t
-  val create : unit -> t
-  val numrows : t -> int
-  val numcols : t -> int -> int
+  val create : string -> t
+  val rows : t -> int
+  val cols : t -> int
+  val next : t -> t
+  val prev : t -> t
+  val skip : t -> int -> t
+  val drop : t -> t
   val append_row : t -> string -> t
+  val insert_char : t -> char -> int -> unit
+  val render : t -> string
   val get : y:int -> x:int -> len:int -> t -> string
-  val insert_char : t -> char -> y:int -> x:int -> t
 end = struct
-  let rendered_tab = String.make kilo_tabstop ' '
+  module DL = BatDllist
 
-  (*** row ***)
-  type row = {
-    (* actual string *)
-    raw_string: string;
-    (* string to be rendered *)
-    render_string: string;
-  }
+  type t = string BatDllist.t (* pointer to a line of buffer *)
 
-  let render raw =
-    (* render a tab as `kilo_tabstop` spaces *)
-    BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
+  let create s = DL.create s
+  let rows t = DL.length t
+  let cols t = String.length @@ DL.get t
+  let next t = DL.next t
+  let prev t = DL.prev t
+  let skip t i = DL.skip t i
+  let drop t = DL.drop t
 
-  let raw_length row =
-    String.length row.raw_string
+  let append_row t row =
+    DL.append t row
 
   let slice s start stop =
     StringLabels.sub s ~pos:start ~len:(stop - start)
 
-  let insert_char_to_row row at c =
-    let at = if at < 0 || at > raw_length row then raw_length row else at in
-    let raw_string = (slice row.raw_string 0 at)
-      ^ Char.escaped c
-      ^ (slice row.raw_string at (raw_length row))
-    in
-    { raw_string; render_string = render raw_string }
+  let insert_char t c at =
+    let row = DL.get t in
+    DL.set t @@
+      (slice row 0 at) ^ Char.escaped c ^ (slice row at (String.length row))
 
-  (*** buffer ***)
-  (* buffer state should be immutable for undoing *)
-  type t = {
-    content: row list;
-  }
-
-  let create () = { content = [] }
-
-  let numrows t = List.length t.content
-  let numcols t y =
-    match List.nth_opt t.content y with
-    | None -> 0
-    | Some row -> String.length row.render_string
-
-  let append_row t raw_string =
-    { content = t.content @ [{raw_string; render_string = render raw_string }] }
+  let rendered_tab = String.make kilo_tabstop ' '
+  let render t =
+    (* TODO: render *)
+    let raw = DL.get t in
+    BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
 
   (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
    *  x and y are indexes from 0. *)
   let get ~y ~x ~len t =
-    let row_str = (List.nth t.content y).render_string in
-    let row_len = String.length row_str in
-    if row_len <= x then
+    let _ = x + len in
+    let rendered = render @@ skip t y in
+    let rendered_len = String.length rendered in
+    if rendered_len <= x then
       ""
     else
-      StringLabels.sub row_str ~pos:x ~len:(BatInt.min len (row_len - x))
-
-  let insert_char t c ~y ~x =
-    let before, row, after =
-      match BatList.takedrop y t.content with
-      | before, row :: after -> before, row, after
-      | _, _ -> assert false
-    in
-    let row = insert_char_to_row row x c in
-    { content = before @ [row] @ after }
+      StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
 end
 
 module Editor_config : sig
@@ -205,7 +185,8 @@ end = struct
     mutable coloff: int;
     (* contents *)
     filename: string;
-    mutable buf: Editor_buffer.t;
+    first_line: Editor_buffer.t;
+    mutable curr_line: Editor_buffer.t;
     (* status message *)
     mutable statusmsg: string;
     mutable statusmsg_time: float; (* UNIX time in seconds *)
@@ -215,6 +196,7 @@ end = struct
     let open Option_monad in
     let* rows = Terminal_size.get_rows () in
     let* cols = Terminal_size.get_columns () in
+    let buf = Editor_buffer.create "" in
     Some { screenrows = rows - 2; (* -2 to make room for status bar and message *)
            screencols = cols;
            cx = 0;
@@ -222,18 +204,17 @@ end = struct
            rowoff = 0;
            coloff = 0;
            filename = "[No Name]";
-           buf = Editor_buffer.create ();
+           first_line = buf;
+           curr_line = buf;
            statusmsg = "";
            statusmsg_time = 0.;
          }
 
-  (* shorthand for Editor_buffer.numrows *)
   let numrows t =
-    Editor_buffer.numrows t.buf
+    Editor_buffer.rows t.first_line
 
-  (* shorthand for Editor_buffer.numcols *)
   let numcols t =
-    Editor_buffer.numcols t.buf t.cy
+    Editor_buffer.cols t.curr_line
 
   let set_statusmsg t msg =
     t.statusmsg <- msg;
@@ -244,11 +225,13 @@ end = struct
       let rec readline input buf =
         try
           readline input (Editor_buffer.append_row buf (BatIO.read_line input))
-        with BatIO.No_more_input -> buf
+        with BatIO.No_more_input ->
+          (* drop first node with empty content *)
+          Editor_buffer.drop @@ Editor_buffer.next buf
       in
-      readline input (Editor_buffer.create ())
+      readline input (Editor_buffer.create "")
     ) in
-    { t with filename; buf }
+    { t with filename; first_line = buf; curr_line = buf }
 
   let welcome_string width =
     let welcome = sprintf "Kilo editor -- version %s" kilo_version in
@@ -260,10 +243,10 @@ end = struct
       let filerow = y + t.rowoff in
       let row =
         (* text buffer *)
-        if filerow < numrows t then
-          Editor_buffer.get t.buf ~y:filerow ~x:t.coloff ~len:(t.screencols)
+        if filerow < numrows t then begin
+          Editor_buffer.get ~y:filerow ~x:t.coloff ~len:t.screencols t.first_line
         (* welcome text *)
-        else if numrows t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
+        end else if numrows t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
       in
@@ -274,7 +257,7 @@ end = struct
 
   let draw_status_bar t =
     let bar = StringFormat.fit t.screencols
-      ~left:(sprintf "%s - %d lines" t.filename (numrows t))
+      ~left:(sprintf "%s - %d lines - %d cols" t.filename (numrows t) (numcols t))
       ~right:(sprintf "%d/%d" (t.cy + 1) (numrows t))
     in
     write @@ Escape_command.inverted_text bar;
@@ -323,14 +306,17 @@ end = struct
       | `Full_down -> t.cx, t.rowoff + 2 * t.screenrows - 1
     in
     (* update y first because the max length of row depends on t.cy *)
-    t.cy <- if cy < 0 then 0 else if cy > numrows t then numrows t else cy;
+    let next_cy = if cy < 0 then 0 else if cy >= numrows t then numrows t - 1 else cy in
+    let dy = next_cy - t.cy in
+    t.curr_line <- Editor_buffer.skip t.curr_line dy;
+    t.cy <- next_cy;
     t.cx <- if cx < 0 then 0 else if cx > numcols t then numcols t else cx
 
   let insert_char t c =
     let () = if t.cy = numrows t then
-      t.buf <- Editor_buffer.append_row t.buf ""
+      t.curr_line <- Editor_buffer.append_row t.curr_line ""
     in
-    t.buf <- Editor_buffer.insert_char t.buf c ~y:t.cy ~x:t.cx;
+    Editor_buffer.insert_char t.curr_line c t.cx;
     t.cx <- t.cx + 1
 
   let rec process_keypress t =
