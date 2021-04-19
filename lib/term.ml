@@ -212,10 +212,10 @@ end = struct
            statusmsg_time = 0.;
          }
 
-  let numrows t =
+  let rows t =
     Editor_buffer.rows t.first_line
 
-  let numcols t =
+  let cols t =
     Editor_buffer.cols t.curr_line
 
   let set_statusmsg t msg =
@@ -245,10 +245,10 @@ end = struct
       let filerow = y + t.rowoff in
       let row =
         (* text buffer *)
-        if filerow < numrows t then begin
+        if filerow < rows t then begin
           Editor_buffer.get ~y:filerow ~x:t.coloff ~len:t.screencols t.first_line
         (* welcome text *)
-        end else if numrows t = 1 && numcols t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
+        end else if rows t = 1 && cols t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
       in
@@ -259,8 +259,8 @@ end = struct
 
   let draw_status_bar t =
     let bar = StringFormat.fit t.screencols
-      ~left:(sprintf "%s - %d lines - %d cols" t.filename (numrows t) (numcols t))
-      ~right:(sprintf "%d/%d" (t.cy + 1) (numrows t))
+      ~left:(sprintf "%s - %d lines - %d cols" t.filename (rows t) (cols t))
+      ~right:(sprintf "%d/%d" (t.cy + 1) (rows t))
     in
     write @@ Escape_command.inverted_text bar;
     write "\r\n"
@@ -301,21 +301,21 @@ end = struct
       | `Right -> t.cx + 1, t.cy
       | `Left -> t.cx - 1, t.cy
       | `Top -> t.cx, 0
-      | `Bottom -> t.cx, numrows t
+      | `Bottom -> t.cx, rows t
       | `Head -> 0, t.cy
-      | `Tail -> numcols t, t.cy
+      | `Tail -> cols t, t.cy
       | `Full_up -> t.cx, t.rowoff - t.screenrows
       | `Full_down -> t.cx, t.rowoff + 2 * t.screenrows - 1
     in
     (* update y first because the max length of row depends on t.cy *)
-    let next_cy = if cy < 0 then 0 else if cy >= numrows t then numrows t - 1 else cy in
+    let next_cy = if cy < 0 then 0 else if cy >= rows t then rows t - 1 else cy in
     let dy = next_cy - t.cy in
     t.curr_line <- Editor_buffer.skip t.curr_line dy;
     t.cy <- next_cy;
-    t.cx <- if cx < 0 then 0 else if cx > numcols t then numcols t else cx
+    t.cx <- if cx < 0 then 0 else if cx > cols t then cols t else cx
 
   let insert_char t c =
-    let () = if t.cy = numrows t then
+    let () = if t.cy = rows t then
       t.curr_line <- Editor_buffer.append_row t.curr_line ""
     in
     Editor_buffer.insert_char t.curr_line c t.cx;
