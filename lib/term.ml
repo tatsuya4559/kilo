@@ -126,6 +126,9 @@ module Editor_buffer : sig
   (** insert_char at x, y *)
   val insert_char : t -> char -> y:int -> x:int -> unit
 
+  (** delete_char at x, y *)
+  val delete_char : t -> y:int -> x:int -> unit
+
   (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
    *  x and y are indexes from 0. *)
   val get : t -> y:int -> x:int -> len:int -> string
@@ -174,15 +177,20 @@ end = struct
     move t y;
     DL.add t.curr_row row
 
-  let slice s start stop =
-    StringLabels.sub s ~pos:start ~len:(stop - start)
+  let slice = BatString.slice
 
   (* FIXME: render後のxを与えられるが、raw stringのxでinsertしている *)
   let insert_char t c ~y ~x =
     move t y;
     let row = DL.get t.curr_row in
     DL.set t.curr_row @@
-      (slice row 0 x) ^ (String.make 1 c) ^ (slice row x (String.length row))
+      (slice ~last:x row) ^ (String.make 1 c) ^ (slice ~first:x row)
+
+  (* FIXME: render後のxを与えられるが、raw stringのxでdeleteしている *)
+  let delete_char t ~y ~x =
+    move t y;
+    let row = DL.get t.curr_row in
+    DL.set t.curr_row @@ (slice ~last:x row) ^ (slice ~first:(x+1) row)
 
   let get t ~y ~x ~len =
     move t y;
@@ -371,13 +379,20 @@ end = struct
     t.cx <- if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx
 
   let insert_char t c =
-    let () = if t.cy = rows t.buf then
+    if t.cy = rows t.buf then begin
       (* making cyth row is appending a row after (cy - 1) *)
       Editor_buffer.append_row t.buf (t.cy - 1) ""
-    in
+    end;
     Editor_buffer.insert_char t.buf c ~y:t.cy ~x:t.cx;
     t.cx <- t.cx + 1;
     t.dirty <- true
+
+  let delete_char t =
+    if t.cy < rows t.buf && t.cx > 0 then begin
+      Editor_buffer.delete_char t.buf ~y:t.cy ~x:(t.cx - 1);
+      t.cx <- t.cx - 1
+    end
+
 
   let rec process_keypress t =
     refresh_screen t;
@@ -403,6 +418,9 @@ end = struct
       | Page_down -> move_cursor t `Full_down; `Continue
       | Home -> move_cursor t `Head; `Continue
       | End -> move_cursor t `Tail; `Continue
+      | Del -> move_cursor t `Right; delete_char t; `Continue
+      | Backspace -> delete_char t; `Continue
+      | Ch c when c = ctrl 'h' -> delete_char t; `Continue
       | Ch c when c = ctrl 's' -> save_file t; `Continue
       | Ch c -> insert_char t c; `Continue
       | _ -> `Wait
