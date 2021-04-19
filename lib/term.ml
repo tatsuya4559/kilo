@@ -110,55 +110,83 @@ let read_key () =
 
 module Editor_buffer : sig
   type t
+
   (** create buffer with initial value *)
   val create : string -> t
+
+  (** rows of buffer *)
   val rows : t -> int
-  val cols : t -> int
-  val next : t -> t
-  val prev : t -> t
-  val skip : t -> int -> t
-  (** remove passed row then return next row *)
-  val drop_row : t -> t
-  (** append passed row then return pointer to the new row *)
-  val append_row : t -> string -> t
-  val insert_char : t -> char -> int -> unit
-  val render : t -> string
-  val get : y:int -> x:int -> len:int -> t -> string
+
+  (** cols of y row *)
+  val cols : t -> int -> int
+
+  (** append row after y *)
+  val append_row : t -> int -> string -> unit
+
+  (** insert_char at x, y *)
+  val insert_char : t -> char -> y:int -> x:int -> unit
+
+  (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
+   *  x and y are indexes from 0. *)
+  val get : t -> y:int -> x:int -> len:int -> string
+
+  (** single string representation of buffer *)
   val to_string : t -> string
 end = struct
   module DL = BatDllist
 
-  type t = string BatDllist.t (* pointer to a line of buffer *)
+  (* TODO: 行ごとの内容をgap bufferで保持する *)
+  type t = {
+    first_row: string DL.t;
+    mutable curr_row: string DL.t;
+    mutable curr_rownum: int;
+  }
 
+  let create s =
+    let row = DL.create s in
+    { first_row = row;
+      curr_row = row;
+      curr_rownum = 0;
+    }
+
+  (** move current line to y *)
+  let move t y =
+    let dy = y - t.curr_rownum in
+    t.curr_row <- DL.skip t.curr_row dy;
+    t.curr_rownum <- y
 
   let rendered_tab = String.make kilo_tabstop ' '
-  let render t =
-    let raw = DL.get t in
-    BatString.nreplace ~str:raw ~sub:"\t" ~by:rendered_tab
+  let render row =
+    let s = DL.get row in
+    BatString.nreplace ~str:s ~sub:"\t" ~by:rendered_tab
 
-  let create s = DL.create s
-  let rows t = DL.length t
-  let cols t = String.length @@ render t
-  let next t = DL.next t
-  let prev t = DL.prev t
-  let skip t i = DL.skip t i
-  let drop_row t = DL.drop t
+  let rows t = DL.length t.first_row
 
-  let append_row t row =
-    DL.append t row
+  let cols t y =
+    if y >= rows t then
+      0
+    else begin
+      move t y;
+      String.length @@ render t.curr_row
+    end
+
+  let append_row t y row =
+    move t y;
+    DL.add t.curr_row row
 
   let slice s start stop =
     StringLabels.sub s ~pos:start ~len:(stop - start)
 
-  let insert_char t c at =
-    let row = DL.get t in
-    DL.set t @@
-      (slice row 0 at) ^ (String.make 1 c) ^ (slice row at (String.length row))
+  (* FIXME: render後のxを与えられるが、raw stringのxでinsertしている *)
+  let insert_char t c ~y ~x =
+    move t y;
+    let row = DL.get t.curr_row in
+    DL.set t.curr_row @@
+      (slice row 0 x) ^ (String.make 1 c) ^ (slice row x (String.length row))
 
-  (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
-   *  x and y are indexes from 0. *)
-  let get ~y ~x ~len t =
-    let rendered = render @@ skip t y in
+  let get t ~y ~x ~len =
+    move t y;
+    let rendered = render t.curr_row in
     let rendered_len = String.length rendered in
     if rendered_len <= x then
       ""
@@ -166,35 +194,42 @@ end = struct
       StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
 
   let to_string t =
-    String.concat kilo_linesep (DL.to_list t) ^ kilo_linesep
+    String.concat kilo_linesep (DL.to_list t.first_row) ^ kilo_linesep
 end
 
 module Editor_config : sig
   (** global state of editor *)
   type t
+
   (** create new editor state *)
   val create : unit -> t option
+
   (** read content from file *)
   val open_file : t -> string -> t
+
   (** set status message *)
   val set_statusmsg : t -> string -> unit
+
   (** wait and process keypress *)
   val process_keypress : t -> unit
 end = struct
   type t = {
     screenrows: int;
     screencols: int;
+
     (* cursor position *)
     mutable cx: int;
     mutable cy: int;
+
     (* offsets *)
     mutable rowoff: int;
     mutable coloff: int;
+
     (* contents *)
     filename: string;
-    first_line: Editor_buffer.t;
-    mutable curr_line: Editor_buffer.t;
+    buf: Editor_buffer.t;
     mutable dirty: bool;
+
     (* status message *)
     mutable statusmsg: string;
     mutable statusmsg_time: float; (* UNIX time in seconds *)
@@ -204,7 +239,6 @@ end = struct
     let open Option_monad in
     let* rows = Terminal_size.get_rows () in
     let* cols = Terminal_size.get_columns () in
-    let buf = Editor_buffer.create "" in
     Some { screenrows = rows - 2; (* -2 to make room for status bar and message *)
            screencols = cols;
            cx = 0;
@@ -212,15 +246,15 @@ end = struct
            rowoff = 0;
            coloff = 0;
            filename = "[No Name]";
-           first_line = buf;
-           curr_line = buf;
+           buf = Editor_buffer.create "";
            dirty = false;
            statusmsg = "";
            statusmsg_time = 0.;
          }
 
-  let rows t = Editor_buffer.rows t.first_line
-  let cols t = Editor_buffer.cols t.curr_line
+  (* shorthands *)
+  let rows = Editor_buffer.rows
+  let cols = Editor_buffer.cols
 
   let set_statusmsg t msg =
     t.statusmsg <- msg;
@@ -228,23 +262,22 @@ end = struct
 
   let open_file t filename =
     let buf = BatFile.with_file_in filename (fun input ->
-      let rec readline input buf =
+      let rec readline input y buf =
         try
-          readline input (Editor_buffer.append_row buf (BatIO.read_line input))
-        with BatIO.No_more_input ->
-          (* return first line of buffer *)
-          Editor_buffer.next buf
+          Editor_buffer.append_row buf y (BatIO.read_line input);
+          readline input (y+1) buf
+        with BatIO.No_more_input -> buf
       in
-      readline input (Editor_buffer.create (BatIO.read_line input))
+      readline input 0 (Editor_buffer.create (BatIO.read_line input))
     ) in
-    { t with filename; first_line = buf; curr_line = buf }
+    { t with filename; buf}
 
   let save_file t =
     let open BatFile in
     if t.filename <> "[No Name]" then
       let p = perm [user_read; user_write; group_read; other_read] in
       with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
-        Editor_buffer.to_string t.first_line
+        Editor_buffer.to_string t.buf
         |> String.iter (fun c -> BatIO.write output c);
         set_statusmsg t @@ sprintf "%s written" t.filename;
         t.dirty <- false
@@ -260,10 +293,12 @@ end = struct
       let filerow = y + t.rowoff in
       let row =
         (* text buffer *)
-        if filerow < rows t then begin
-          Editor_buffer.get ~y:filerow ~x:t.coloff ~len:t.screencols t.first_line
+        if filerow < rows t.buf then begin
+          Editor_buffer.get t.buf ~y:filerow ~x:t.coloff ~len:t.screencols
         (* welcome text *)
-        end else if rows t = 1 && cols t = 0 && y = t.screenrows / 3 then welcome_string t.screencols
+        end else if rows t.buf = 1
+          && cols t.buf y = 0
+          && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
       in
@@ -277,9 +312,9 @@ end = struct
       ~left:(sprintf "%s%s - %d lines - %d cols"
         t.filename
         (if t.dirty then " [+]" else "")
-        (rows t)
-        (cols t))
-      ~right:(sprintf "%d/%d" (t.cy + 1) (rows t))
+        (rows t.buf)
+        (cols t.buf t.cy))
+      ~right:(sprintf "%d/%d" (t.cy + 1) (rows t.buf))
     in
     write @@ Escape_command.inverted_text bar;
     write "\r\n"
@@ -320,24 +355,22 @@ end = struct
       | `Right -> t.cx + 1, t.cy
       | `Left -> t.cx - 1, t.cy
       | `Top -> t.cx, 0
-      | `Bottom -> t.cx, rows t
+      | `Bottom -> t.cx, rows t.buf
       | `Head -> 0, t.cy
-      | `Tail -> cols t, t.cy
+      | `Tail -> cols t.buf t.cy, t.cy
       | `Full_up -> t.cx, t.rowoff - t.screenrows
       | `Full_down -> t.cx, t.rowoff + 2 * t.screenrows - 1
     in
     (* update y first because the max length of row depends on t.cy *)
-    let next_cy = if cy < 0 then 0 else if cy >= rows t then rows t - 1 else cy in
-    let dy = next_cy - t.cy in
-    t.curr_line <- Editor_buffer.skip t.curr_line dy;
-    t.cy <- next_cy;
-    t.cx <- if cx < 0 then 0 else if cx > cols t then cols t else cx
+    t.cy <- if cy < 0 then 0 else if cy > rows t.buf then rows t.buf else cy ;
+    t.cx <- if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx
 
   let insert_char t c =
-    let () = if t.cy = rows t then
-      t.curr_line <- Editor_buffer.append_row t.curr_line ""
+    let () = if t.cy = rows t.buf then
+      (* making cyth row is appending a row after (cy - 1) *)
+      Editor_buffer.append_row t.buf (t.cy - 1) ""
     in
-    Editor_buffer.insert_char t.curr_line c t.cx;
+    Editor_buffer.insert_char t.buf c ~y:t.cy ~x:t.cx;
     t.cx <- t.cx + 1;
     t.dirty <- true
 
