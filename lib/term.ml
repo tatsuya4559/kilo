@@ -4,6 +4,7 @@ open Util
 (* constants *)
 let kilo_version = "0.1"
 let kilo_tabstop = 8
+let kilo_linesep = "\n"
 
 
 let with_raw_mode fn =
@@ -165,7 +166,7 @@ end = struct
       StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
 
   let to_string t =
-    String.concat "\n" (DL.to_list t) ^ "\n"
+    String.concat kilo_linesep (DL.to_list t) ^ kilo_linesep
 end
 
 module Editor_config : sig
@@ -216,11 +217,8 @@ end = struct
            statusmsg_time = 0.;
          }
 
-  let rows t =
-    Editor_buffer.rows t.first_line
-
-  let cols t =
-    Editor_buffer.cols t.curr_line
+  let rows t = Editor_buffer.rows t.first_line
+  let cols t = Editor_buffer.cols t.curr_line
 
   let set_statusmsg t msg =
     t.statusmsg <- msg;
@@ -244,7 +242,8 @@ end = struct
     if t.filename <> "[No Name]" then
       let p = perm [user_read; user_write; group_read; other_read] in
       with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
-        BatIO.write_string output (Editor_buffer.to_string t.first_line);
+        Editor_buffer.to_string t.first_line
+        |> String.iter (fun c -> BatIO.write output c);
         set_statusmsg t @@ sprintf "%s written" t.filename
       )
 
@@ -285,7 +284,7 @@ end = struct
         then t.statusmsg
         else ""
 
-  (* update rowoff if cursor is out of screen *)
+  (* update rowoff and coloff if cursor is out of screen *)
   let scroll t =
     t.rowoff <-
       if t.cy < t.rowoff then t.cy
