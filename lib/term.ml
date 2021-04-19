@@ -418,11 +418,14 @@ end = struct
       | Page_down -> move_cursor t `Full_down; `Continue
       | Home -> move_cursor t `Head; `Continue
       | End -> move_cursor t `Tail; `Continue
+      (* save file *)
+      | Ch c when c = ctrl 's' -> save_file t; `Continue
+      (* insert/delete text *)
       | Del -> move_cursor t `Right; delete_char t; `Continue
       | Backspace -> delete_char t; `Continue
       | Ch c when c = ctrl 'h' -> delete_char t; `Continue
-      | Ch c when c = ctrl 's' -> save_file t; `Continue
       | Ch c -> insert_char t c; `Continue
+      (* no keypress *)
       | _ -> `Wait
     in
     match result with
