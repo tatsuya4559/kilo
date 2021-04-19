@@ -233,6 +233,8 @@ end = struct
     (* status message *)
     mutable statusmsg: string;
     mutable statusmsg_time: float; (* UNIX time in seconds *)
+
+    mutable quitting_count: int;
   }
 
   let create () =
@@ -250,6 +252,7 @@ end = struct
            dirty = false;
            statusmsg = "";
            statusmsg_time = 0.;
+           quitting_count = 0;
          }
 
   (* shorthands *)
@@ -378,22 +381,37 @@ end = struct
 
   let rec process_keypress t =
     refresh_screen t;
-    match read_key () with
-    (* quit *)
-    | Ch c when c = ctrl 'q' ->
-        write Escape_command.clear_screen;
-        write Escape_command.cursor_topleft;
-        flush ()
-    (* move cursor *)
-    | Arrow_up -> move_cursor t `Up; process_keypress t
-    | Arrow_down -> move_cursor t `Down; process_keypress t
-    | Arrow_right -> move_cursor t `Right; process_keypress t
-    | Arrow_left -> move_cursor t `Left; process_keypress t
-    | Page_up -> move_cursor t `Full_up; process_keypress t
-    | Page_down -> move_cursor t `Full_down; process_keypress t
-    | Home -> move_cursor t `Head; process_keypress t
-    | End -> move_cursor t `Tail; process_keypress t
-    | Ch c when c = ctrl 's' -> save_file t; process_keypress t
-    | Ch c -> insert_char t c; process_keypress t
-    | _ -> process_keypress t
+    let result = match read_key () with
+      (* quit *)
+      | Ch c when c = ctrl 'q' ->
+          if t.dirty && t.quitting_count < 1 then begin
+            t.quitting_count <- t.quitting_count + 1;
+            set_statusmsg t "WARNING!!! File has unsaved changes. Press Ctrl-Q again to quit.";
+            `Wait
+          end else begin
+            write Escape_command.clear_screen;
+            write Escape_command.cursor_topleft;
+            flush ();
+            `Quit
+          end
+      (* move cursor *)
+      | Arrow_up -> move_cursor t `Up; `Continue
+      | Arrow_down -> move_cursor t `Down; `Continue
+      | Arrow_right -> move_cursor t `Right; `Continue
+      | Arrow_left -> move_cursor t `Left; `Continue
+      | Page_up -> move_cursor t `Full_up; `Continue
+      | Page_down -> move_cursor t `Full_down; `Continue
+      | Home -> move_cursor t `Head; `Continue
+      | End -> move_cursor t `Tail; `Continue
+      | Ch c when c = ctrl 's' -> save_file t; `Continue
+      | Ch c -> insert_char t c; `Continue
+      | _ -> `Wait
+    in
+    match result with
+    | `Quit -> ()
+    | `Wait ->
+        process_keypress t
+    | `Continue ->
+        t.quitting_count <- 0;
+        process_keypress t
 end
