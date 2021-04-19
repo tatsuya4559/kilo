@@ -14,5 +14,5 @@ let () =
           else
             x
     in
-    Editor_config.set_statusmsg editor_config "HELP: Ctrl-Q = quit";
+    Editor_config.set_statusmsg editor_config "HELP: Ctrl-S = save | Ctrl-Q = quit";
     Editor_config.process_keypress editor_config)

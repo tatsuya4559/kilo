@@ -123,6 +123,7 @@ module Editor_buffer : sig
   val insert_char : t -> char -> int -> unit
   val render : t -> string
   val get : y:int -> x:int -> len:int -> t -> string
+  val to_string : t -> string
 end = struct
   module DL = BatDllist
 
@@ -162,6 +163,9 @@ end = struct
       ""
     else
       StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
+
+  let to_string t =
+    String.concat "\n" (DL.to_list t) ^ "\n"
 end
 
 module Editor_config : sig
@@ -234,6 +238,15 @@ end = struct
       readline input (Editor_buffer.create (BatIO.read_line input))
     ) in
     { t with filename; first_line = buf; curr_line = buf }
+
+  let save_file t =
+    let open BatFile in
+    if t.filename <> "[No Name]" then
+      let p = perm [user_read; user_write; group_read; other_read] in
+      with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
+        BatIO.write_string output (Editor_buffer.to_string t.first_line);
+        set_statusmsg t @@ sprintf "%s written" t.filename
+      )
 
   let welcome_string width =
     let welcome = sprintf "Kilo editor -- version %s" kilo_version in
@@ -338,6 +351,7 @@ end = struct
     | Page_down -> move_cursor t `Full_down; process_keypress t
     | Home -> move_cursor t `Head; process_keypress t
     | End -> move_cursor t `Tail; process_keypress t
+    | Ch c when c = ctrl 's' -> save_file t; process_keypress t
     | Ch c -> insert_char t c; process_keypress t
     | _ -> process_keypress t
 end
