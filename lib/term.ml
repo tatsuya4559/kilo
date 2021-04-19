@@ -268,7 +268,9 @@ end = struct
           readline input (y+1) buf
         with BatIO.No_more_input -> buf
       in
-      readline input 0 (Editor_buffer.create (BatIO.read_line input))
+      try
+        readline input 0 (Editor_buffer.create (BatIO.read_line input))
+      with BatIO.No_more_input -> Editor_buffer.create ""
     ) in
     { t with filename; buf}
 
