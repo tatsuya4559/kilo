@@ -194,6 +194,7 @@ end = struct
     filename: string;
     first_line: Editor_buffer.t;
     mutable curr_line: Editor_buffer.t;
+    mutable dirty: bool;
     (* status message *)
     mutable statusmsg: string;
     mutable statusmsg_time: float; (* UNIX time in seconds *)
@@ -213,6 +214,7 @@ end = struct
            filename = "[No Name]";
            first_line = buf;
            curr_line = buf;
+           dirty = false;
            statusmsg = "";
            statusmsg_time = 0.;
          }
@@ -244,7 +246,8 @@ end = struct
       with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
         Editor_buffer.to_string t.first_line
         |> String.iter (fun c -> BatIO.write output c);
-        set_statusmsg t @@ sprintf "%s written" t.filename
+        set_statusmsg t @@ sprintf "%s written" t.filename;
+        t.dirty <- false
       )
 
   let welcome_string width =
@@ -271,7 +274,11 @@ end = struct
 
   let draw_status_bar t =
     let bar = StringFormat.fit t.screencols
-      ~left:(sprintf "%s - %d lines - %d cols" t.filename (rows t) (cols t))
+      ~left:(sprintf "%s%s - %d lines - %d cols"
+        t.filename
+        (if t.dirty then " [+]" else "")
+        (rows t)
+        (cols t))
       ~right:(sprintf "%d/%d" (t.cy + 1) (rows t))
     in
     write @@ Escape_command.inverted_text bar;
@@ -331,7 +338,8 @@ end = struct
       t.curr_line <- Editor_buffer.append_row t.curr_line ""
     in
     Editor_buffer.insert_char t.curr_line c t.cx;
-    t.cx <- t.cx + 1
+    t.cx <- t.cx + 1;
+    t.dirty <- true
 
   let rec process_keypress t =
     refresh_screen t;
