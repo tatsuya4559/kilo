@@ -63,6 +63,14 @@ let join_row t y =
     delete_row t (y + 1)
   end
 
+let insert_newline t ~y ~x =
+  move t y;
+  let curr = DL.get t.curr_row in
+  let before = S.slice ~last:x curr in
+  let at_and_after = S.slice ~first:x curr in
+  DL.set t.curr_row before;
+  append_row t y at_and_after
+
 (* FIXME: render後のxを与えられるが、raw stringのxでinsertしている *)
 let insert_char t c ~y ~x =
   move t y;
@@ -94,7 +102,27 @@ let%test_module "tests" = (module struct
     let b = create "hoge" in
     append_row b 0 "fuga";
     append_row b 1 "piyo";
-    assert (to_string b = "hoge\nfuga\npiyo\n");
+    assert (to_string b = {|hoge
+fuga
+piyo
+|});
+
     join_row b 1;
-    assert (to_string b = "hoge\nfugapiyo\n")
+    assert (to_string b = {|hoge
+fugapiyo
+|});
+
+    insert_newline b ~y:1 ~x:2;
+    assert (to_string b = {|hoge
+fu
+gapiyo
+|});
+
+    insert_newline b ~y:0 ~x:0;
+    assert (to_string b = {|
+hoge
+fu
+gapiyo
+|})
+
 end)

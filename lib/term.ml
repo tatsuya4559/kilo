@@ -292,6 +292,11 @@ end = struct
     t.cx <- t.cx + 1;
     t.dirty <- true
 
+  let insert_newline t =
+    Editor_buffer.insert_newline t.buf ~y:t.cy ~x:t.cx;
+    t.cy <- t.cy + 1;
+    t.cx <- 0
+
   let delete_char t =
     if t.cy = rows t.buf then ()
     else if t.cy = 0 && t.cx = 0 then ()
@@ -334,6 +339,7 @@ end = struct
       (* save file *)
       | Ch c when c = ctrl 's' -> save_file t; `Continue
       (* insert/delete text *)
+      | Enter -> insert_newline t; `Continue
       | Del -> move_cursor t `Right; delete_char t; `Continue
       | Backspace -> delete_char t; `Continue
       | Ch c when c = ctrl 'h' -> delete_char t; `Continue

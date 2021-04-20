@@ -21,6 +21,9 @@ val append_string : t -> int -> string -> unit
 (** join row y and y+1 *)
 val join_row : t -> int -> unit
 
+(** insert newline at x, y *)
+val insert_newline : t -> y:int -> x:int -> unit
+
 (** insert_char at x, y *)
 val insert_char : t -> char -> y:int -> x:int -> unit
 
