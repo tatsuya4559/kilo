@@ -379,7 +379,7 @@ end = struct
       | Backspace -> delete_char t; `Continue
       | Ch c when c = ctrl 'h' -> delete_char t; `Continue
       | Ch c when c = ctrl 'd' -> delete_row t; `Continue
-      | Ch c -> insert_char t c; `Continue
+      | Ch c when not @@ is_ctrl c -> insert_char t c; `Continue
       (* no keypress *)
       | _ -> `Wait
     in
