@@ -351,7 +351,7 @@ end = struct
           Editor_buffer.get t.buf ~y:filerow ~x:t.coloff ~len:t.screencols
         (* welcome text *)
         end else if rows t.buf = 1
-          && cols t.buf y = 0
+          && cols t.buf 0 = 0
           && y = t.screenrows / 3 then welcome_string t.screencols
         (* out of buffer *)
         else "~"
