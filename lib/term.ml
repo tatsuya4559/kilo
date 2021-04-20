@@ -123,6 +123,15 @@ module Editor_buffer : sig
   (** append row after y *)
   val append_row : t -> int -> string -> unit
 
+  (** delete row at y *)
+  val delete_row : t -> int -> unit
+
+  (** append string to row y *)
+  val append_string : t -> int -> string -> unit
+
+  (** join row y and y+1 *)
+  val join_row : t -> int -> unit
+
   (** insert_char at x, y *)
   val insert_char : t -> char -> y:int -> x:int -> unit
 
@@ -137,6 +146,7 @@ module Editor_buffer : sig
   val to_string : t -> string
 end = struct
   module DL = BatDllist
+  module S = BatString
 
   (* TODO: 行ごとの内容をgap bufferで保持する *)
   type t = {
@@ -152,57 +162,88 @@ end = struct
       curr_rownum = 0;
     }
 
-  (** move current line to y *)
-  let move t y =
-    let dy = y - t.curr_rownum in
-    t.curr_row <- DL.skip t.curr_row dy;
-    t.curr_rownum <- y
-
-  let rendered_tab = String.make kilo_tabstop ' '
+  let rendered_tab = S.make kilo_tabstop ' '
   let render row =
     let s = DL.get row in
-    BatString.nreplace ~str:s ~sub:"\t" ~by:rendered_tab
+    S.nreplace ~str:s ~sub:"\t" ~by:rendered_tab
 
   let rows t = DL.length t.first_row
+
+  (** move current line to y *)
+  let move t y =
+    if 0 <= y && y < rows t then begin
+      let dy = y - t.curr_rownum in
+      t.curr_row <- DL.skip t.curr_row dy;
+      t.curr_rownum <- y
+    end else assert false (* for debug *)
 
   let cols t y =
     if y >= rows t then
       0
     else begin
       move t y;
-      String.length @@ render t.curr_row
+      S.length @@ render t.curr_row
     end
 
   let append_row t y row =
     move t y;
     DL.add t.curr_row row
 
-  let slice = BatString.slice
+  let delete_row t y =
+    move t y;
+    if y = rows t - 1 then begin
+      DL.remove t.curr_row;
+      t.curr_row <- DL.prev t.first_row;
+      t.curr_rownum <- y - 1
+    end else
+      t.curr_row <- DL.drop t.curr_row
+
+  let append_string t y str =
+    move t y;
+    let curr = DL.get t.curr_row in
+    DL.set t.curr_row @@ curr ^ str
+
+  let join_row t y =
+    if y < rows t - 1 then begin
+      move t y;
+      append_string t y (DL.get (DL.next t.curr_row));
+      delete_row t (y + 1)
+    end
 
   (* FIXME: render後のxを与えられるが、raw stringのxでinsertしている *)
   let insert_char t c ~y ~x =
     move t y;
     let row = DL.get t.curr_row in
     DL.set t.curr_row @@
-      (slice ~last:x row) ^ (String.make 1 c) ^ (slice ~first:x row)
+      (S.slice ~last:x row) ^ (S.make 1 c) ^ (S.slice ~first:x row)
 
   (* FIXME: render後のxを与えられるが、raw stringのxでdeleteしている *)
   let delete_char t ~y ~x =
     move t y;
     let row = DL.get t.curr_row in
-    DL.set t.curr_row @@ (slice ~last:x row) ^ (slice ~first:(x+1) row)
+    DL.set t.curr_row @@ (S.slice ~last:x row) ^ (S.slice ~first:(x+1) row)
 
   let get t ~y ~x ~len =
     move t y;
     let rendered = render t.curr_row in
-    let rendered_len = String.length rendered in
+    let rendered_len = S.length rendered in
     if rendered_len <= x then
       ""
     else
       StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
 
   let to_string t =
-    String.concat kilo_linesep (DL.to_list t.first_row) ^ kilo_linesep
+    S.concat kilo_linesep (DL.to_list t.first_row) ^ kilo_linesep
+
+  let%test_module "tests" = (module struct
+    let%test_unit _ =
+      let b = create "hoge" in
+      append_row b 0 "fuga";
+      append_row b 1 "piyo";
+      assert (to_string b = "hoge\nfuga\npiyo\n");
+      join_row b 1;
+      assert (to_string b = "hoge\nfugapiyo\n")
+  end)
 end
 
 module Editor_config : sig
@@ -378,6 +419,14 @@ end = struct
     t.cy <- if cy < 0 then 0 else if cy > rows t.buf then rows t.buf else cy ;
     t.cx <- if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx
 
+  let delete_row t =
+    if rows t.buf <> 1 then begin
+      Editor_buffer.delete_row t.buf t.cy;
+      (* if deleted last line then decrement cy *)
+      if t.cy = rows t.buf - 1 then t.cy <- t.cy - 1;
+      t.dirty <- true
+    end
+
   let insert_char t c =
     if t.cy = rows t.buf then begin
       (* making cyth row is appending a row after (cy - 1) *)
@@ -388,11 +437,19 @@ end = struct
     t.dirty <- true
 
   let delete_char t =
-    if t.cy < rows t.buf && t.cx > 0 then begin
+    if t.cy = rows t.buf then ()
+    else if t.cy = 0 && t.cx = 0 then ()
+    else if t.cx > 0 then begin
       Editor_buffer.delete_char t.buf ~y:t.cy ~x:(t.cx - 1);
-      t.cx <- t.cx - 1
+      t.cx <- t.cx - 1;
+      t.dirty <- true
+    end else begin
+      let new_cx = cols t.buf (t.cy - 1) in
+      Editor_buffer.join_row t.buf (t.cy - 1);
+      t.cy <- t.cy - 1;
+      t.cx <- new_cx;
+      t.dirty <- true
     end
-
 
   let rec process_keypress t =
     refresh_screen t;
@@ -424,6 +481,7 @@ end = struct
       | Del -> move_cursor t `Right; delete_char t; `Continue
       | Backspace -> delete_char t; `Continue
       | Ch c when c = ctrl 'h' -> delete_char t; `Continue
+      | Ch c when c = ctrl 'd' -> delete_row t; `Continue
       | Ch c -> insert_char t c; `Continue
       (* no keypress *)
       | _ -> `Wait
