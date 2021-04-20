@@ -312,6 +312,10 @@ end = struct
       match read_key () with
       | Enter -> set_statusmsg t ""; Some input
       | Esc -> set_statusmsg t ""; None
+      | Backspace ->
+          prompt' t (BatString.rchop ~n:1 input)
+      | Ch c when c = ctrl 'h' ->
+          prompt' t (BatString.rchop ~n:1 input)
       | Ch c when (not @@ is_ctrl c) && Char.code c < 128 ->
           prompt' t (sprintf "%s%c" input c)
       | _ -> prompt' t input
