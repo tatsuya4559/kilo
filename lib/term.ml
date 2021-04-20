@@ -1,12 +1,6 @@
 open Printf
 open Util
 
-(* constants *)
-let kilo_version = "0.1"
-let kilo_tabstop = 8
-let kilo_linesep = "\n"
-
-
 let with_raw_mode fn =
   let open Unix in
   let termios = tcgetattr stdin in
@@ -108,144 +102,6 @@ let read_key () =
       | _ -> Ch c
   with End_of_file -> Nothing
 
-module Editor_buffer : sig
-  type t
-
-  (** create buffer with initial value *)
-  val create : string -> t
-
-  (** rows of buffer *)
-  val rows : t -> int
-
-  (** cols of y row *)
-  val cols : t -> int -> int
-
-  (** append row after y *)
-  val append_row : t -> int -> string -> unit
-
-  (** delete row at y *)
-  val delete_row : t -> int -> unit
-
-  (** append string to row y *)
-  val append_string : t -> int -> string -> unit
-
-  (** join row y and y+1 *)
-  val join_row : t -> int -> unit
-
-  (** insert_char at x, y *)
-  val insert_char : t -> char -> y:int -> x:int -> unit
-
-  (** delete_char at x, y *)
-  val delete_char : t -> y:int -> x:int -> unit
-
-  (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
-   *  x and y are indexes from 0. *)
-  val get : t -> y:int -> x:int -> len:int -> string
-
-  (** single string representation of buffer *)
-  val to_string : t -> string
-end = struct
-  module DL = BatDllist
-  module S = BatString
-
-  (* TODO: 行ごとの内容をgap bufferで保持する *)
-  type t = {
-    first_row: string DL.t;
-    mutable curr_row: string DL.t;
-    mutable curr_rownum: int;
-  }
-
-  let create s =
-    let row = DL.create s in
-    { first_row = row;
-      curr_row = row;
-      curr_rownum = 0;
-    }
-
-  let rendered_tab = S.make kilo_tabstop ' '
-  let render row =
-    let s = DL.get row in
-    S.nreplace ~str:s ~sub:"\t" ~by:rendered_tab
-
-  let rows t = DL.length t.first_row
-
-  (** move current line to y *)
-  let move t y =
-    if 0 <= y && y < rows t then begin
-      let dy = y - t.curr_rownum in
-      t.curr_row <- DL.skip t.curr_row dy;
-      t.curr_rownum <- y
-    end else assert false (* for debug *)
-
-  let cols t y =
-    if y >= rows t then
-      0
-    else begin
-      move t y;
-      S.length @@ render t.curr_row
-    end
-
-  let append_row t y row =
-    move t y;
-    DL.add t.curr_row row
-
-  let delete_row t y =
-    move t y;
-    if y = rows t - 1 then begin
-      DL.remove t.curr_row;
-      t.curr_row <- DL.prev t.first_row;
-      t.curr_rownum <- y - 1
-    end else
-      t.curr_row <- DL.drop t.curr_row
-
-  let append_string t y str =
-    move t y;
-    let curr = DL.get t.curr_row in
-    DL.set t.curr_row @@ curr ^ str
-
-  let join_row t y =
-    if y < rows t - 1 then begin
-      move t y;
-      append_string t y (DL.get (DL.next t.curr_row));
-      delete_row t (y + 1)
-    end
-
-  (* FIXME: render後のxを与えられるが、raw stringのxでinsertしている *)
-  let insert_char t c ~y ~x =
-    move t y;
-    let row = DL.get t.curr_row in
-    DL.set t.curr_row @@
-      (S.slice ~last:x row) ^ (S.make 1 c) ^ (S.slice ~first:x row)
-
-  (* FIXME: render後のxを与えられるが、raw stringのxでdeleteしている *)
-  let delete_char t ~y ~x =
-    move t y;
-    let row = DL.get t.curr_row in
-    DL.set t.curr_row @@ (S.slice ~last:x row) ^ (S.slice ~first:(x+1) row)
-
-  let get t ~y ~x ~len =
-    move t y;
-    let rendered = render t.curr_row in
-    let rendered_len = S.length rendered in
-    if rendered_len <= x then
-      ""
-    else
-      StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
-
-  let to_string t =
-    S.concat kilo_linesep (DL.to_list t.first_row) ^ kilo_linesep
-
-  let%test_module "tests" = (module struct
-    let%test_unit _ =
-      let b = create "hoge" in
-      append_row b 0 "fuga";
-      append_row b 1 "piyo";
-      assert (to_string b = "hoge\nfuga\npiyo\n");
-      join_row b 1;
-      assert (to_string b = "hoge\nfugapiyo\n")
-  end)
-end
-
 module Editor_config : sig
   (** global state of editor *)
   type t
@@ -338,7 +194,7 @@ end = struct
       )
 
   let welcome_string width =
-    let welcome = sprintf "Kilo editor -- version %s" kilo_version in
+    let welcome = sprintf "Kilo editor -- version %s" Settings.kilo_version in
     let padding = String.make (((width - String.length welcome) / 2) - 1) ' ' in
     "~" ^ padding ^ welcome
 
