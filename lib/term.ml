@@ -42,6 +42,10 @@ let flush () = flush stdout
 let ctrl c =
   Char.chr ((Char.code c) land 0x1f)
 
+let is_ctrl c =
+  let code = Char.code c in
+  (0x00 <= code && code <= 0x1f) || code = 0x7f
+
 let die msg =
   write Escape_command.clear_screen;
   write Escape_command.cursor_topleft;
@@ -131,7 +135,7 @@ end = struct
     mutable coloff: int;
 
     (* contents *)
-    filename: string;
+    mutable filename: string;
     buf: Editor_buffer.t;
     mutable dirty: bool;
 
@@ -181,17 +185,6 @@ end = struct
       with BatIO.No_more_input -> Editor_buffer.create ""
     ) in
     { t with filename; buf}
-
-  let save_file t =
-    let open BatFile in
-    if t.filename <> "[No Name]" then
-      let p = perm [user_read; user_write; group_read; other_read] in
-      with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
-        Editor_buffer.to_string t.buf
-        |> String.iter (fun c -> BatIO.write output c);
-        set_statusmsg t @@ sprintf "%s written" t.filename;
-        t.dirty <- false
-      )
 
   let welcome_string width =
     let welcome = sprintf "Kilo editor -- version %s" Settings.kilo_version in
@@ -310,6 +303,36 @@ end = struct
       t.cy <- t.cy - 1;
       t.cx <- new_cx;
       t.dirty <- true
+    end
+
+  let prompt t msgfmt =
+    let rec prompt' t input =
+      set_statusmsg t (sprintf msgfmt input);
+      refresh_screen t;
+      match read_key () with
+      | Enter -> set_statusmsg t ""; Some input
+      | Esc -> set_statusmsg t ""; None
+      | Ch c when (not @@ is_ctrl c) && Char.code c < 128 ->
+          prompt' t (sprintf "%s%c" input c)
+      | _ -> prompt' t input
+    in
+    prompt' t ""
+
+  let save_file t =
+    let open BatFile in
+    if t.filename = "[No Name]" then begin
+      match prompt t "Save as: %s (Esc to cancel)" with
+      | None -> ()
+      | Some filename -> t.filename <- filename
+    end;
+    if t.filename <> "[No Name]" then begin
+      let p = perm [user_read; user_write; group_read; other_read] in
+      with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
+        Editor_buffer.to_string t.buf
+        |> String.iter (fun c -> BatIO.write output c);
+        set_statusmsg t @@ sprintf "%s written" t.filename;
+        t.dirty <- false
+      )
     end
 
   let rec process_keypress t =
