@@ -363,6 +363,12 @@ end = struct
       | Page_down -> move_cursor t `Full_down; `Continue
       | Home -> move_cursor t `Head; `Continue
       | End -> move_cursor t `Tail; `Continue
+      | Ch c when c = ctrl 'p' -> move_cursor t `Up; `Continue
+      | Ch c when c = ctrl 'n' -> move_cursor t `Down; `Continue
+      | Ch c when c = ctrl 'f' -> move_cursor t `Right; `Continue
+      | Ch c when c = ctrl 'b' -> move_cursor t `Left; `Continue
+      | Ch c when c = ctrl 'a' -> move_cursor t `Head; `Continue
+      | Ch c when c = ctrl 'e' -> move_cursor t `Tail; `Continue
       (* save file *)
       | Ch c when c = ctrl 's' -> save_file t; `Continue
       (* insert/delete text *)
