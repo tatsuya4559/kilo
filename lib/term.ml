@@ -135,7 +135,7 @@ end = struct
     mutable coloff: int;
 
     (* contents *)
-    mutable filename: string;
+    mutable filename: string option;
     buf: Editor_buffer.t;
     mutable dirty: bool;
 
@@ -156,7 +156,7 @@ end = struct
            cy = 0;
            rowoff = 0;
            coloff = 0;
-           filename = "[No Name]";
+           filename = None;
            buf = Editor_buffer.create "";
            dirty = false;
            statusmsg = "";
@@ -184,7 +184,7 @@ end = struct
         readline input 0 (Editor_buffer.create (BatIO.read_line input))
       with BatIO.No_more_input -> Editor_buffer.create ""
     ) in
-    { t with filename; buf}
+    { t with filename = Some filename; buf}
 
   let welcome_string width =
     let welcome = sprintf "Kilo editor -- version %s" Settings.kilo_version in
@@ -213,7 +213,7 @@ end = struct
   let draw_status_bar t =
     let bar = StringFormat.fit t.screencols
       ~left:(sprintf "%s%s - %d lines - %d cols"
-        t.filename
+        (BatOption.default "[No Name]" t.filename)
         (if t.dirty then " [+]" else "")
         (rows t.buf)
         (cols t.buf t.cy))
@@ -324,20 +324,22 @@ end = struct
 
   let save_file t =
     let open BatFile in
-    if t.filename = "[No Name]" then begin
+    if Option.is_none t.filename then begin
       match prompt t "Save as: %s (Esc to cancel)" with
       | None -> ()
-      | Some filename -> t.filename <- filename
+      | Some filename -> t.filename <- Some filename
     end;
-    if t.filename <> "[No Name]" then begin
+    match t.filename with
+    | None ->
+        set_statusmsg t "Save aborted"
+    | Some filename ->
       let p = perm [user_read; user_write; group_read; other_read] in
-      with_file_out ~mode:[`create; `trunc] ~perm:p t.filename (fun output ->
+      with_file_out ~mode:[`create; `trunc] ~perm:p filename (fun output ->
         Editor_buffer.to_string t.buf
         |> String.iter (fun c -> BatIO.write output c);
-        set_statusmsg t @@ sprintf "%s written" t.filename;
+        set_statusmsg t @@ sprintf "%s written" filename;
         t.dirty <- false
       )
-    end
 
   let rec process_keypress t =
     refresh_screen t;
