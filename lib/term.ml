@@ -297,8 +297,9 @@ end = struct
     if t.cy = rows t.buf then ()
     else if t.cy = 0 && t.cx = 0 then ()
     else if t.cx > 0 then begin
+      let is_tab = Editor_buffer.is_tab t.buf ~y:t.cy ~x:(t.cx - 1) in
       Editor_buffer.delete_char t.buf ~y:t.cy ~x:(t.cx - 1);
-      t.cx <- t.cx - 1;
+      t.cx <- t.cx - if is_tab then Settings.kilo_tabstop else 1;
       t.dirty <- true
     end else begin
       let new_cx = cols t.buf (t.cy - 1) in

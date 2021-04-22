@@ -37,7 +37,8 @@ let to_real_x raw_text vx =
       i := !i + Settings.kilo_tabstop
     else
       i := !i + 1;
-    x := !x + 1
+    if !i <= vx then
+      x := !x + 1
   done;
   !x
 
@@ -45,17 +46,20 @@ let%test_module "Renderer test" = (module struct
   let%test "render" =
     render "hoge\tfuga" = "hoge        fuga"
 
-  let%test "rx_of_cx without tab" =
+  let%test "to_visual_x without tab" =
     to_visual_x "hoge\tfuga" 3 = 3
 
-  let%test "rx_of_cx with tab" =
+  let%test "to_visual_x with tab" =
     to_visual_x "hoge\tfuga" 6 = 13
 
-  let%test "cx_of_rx without tab" =
+  let%test "to_real_x without tab" =
     to_real_x "hoge\tfuga" 3 = 3
 
-  let%test "cx_of_rx with tab" =
+  let%test "to_real_x with tab" =
     to_real_x "hoge\tfuga" 13 = 6
+
+  let%test "to_real_x with last tab" =
+    to_real_x "hoge\tfuga" 11 = 4
 end)
 let rows t = DL.length t.first_row
 
@@ -141,6 +145,12 @@ let get_position_in_row t y query =
   try
     BatString.find row query
   with Not_found -> -1
+
+let is_tab t ~y ~x =
+  move t y;
+  let curr = DL.get t.curr_row in
+  let x = to_real_x curr x in
+  curr.[x] = '\t'
 
 let to_string t =
   let open Settings in

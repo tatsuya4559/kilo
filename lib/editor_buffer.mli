@@ -41,5 +41,8 @@ val get : t -> y:int -> x:int -> len:int -> string
  * return -1 if not found *)
 val get_position_in_row : t -> int -> string -> int
 
+(** wheather char at x, y is a hard tab *)
+val is_tab : t -> y:int -> x:int -> bool
+
 (** single string representation of buffer *)
 val to_string : t -> string
