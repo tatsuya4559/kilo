@@ -327,11 +327,13 @@ end = struct
     match prompt t "Search: %s (ESC to cancel)" with
     | None -> ()
     | Some query ->
-        for i = 0 to rows t.buf - 1 do
-          match Editor_buffer.get_position_in_row t.buf i query with
-          | -1 -> ()
-          | x -> ( t.cy <- i; t.cx <- x)
-        done
+        let max_y = rows t.buf in
+        let rec find' y =
+          match Editor_buffer.get_position_in_row t.buf y query with
+          | -1 -> if y < max_y then find' (y+1) else ()
+          | x -> ( t.cy <- y; t.cx <- x)
+        in
+        find' 0
 
   let save_file t =
     let open BatFile in
