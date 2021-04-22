@@ -44,7 +44,7 @@ let ctrl c =
 
 let is_ctrl c =
   let code = Char.code c in
-  (0x00 <= code && code <= 0x1f) || code = 0x7f
+  (0x00 <= code && code <= 0x1f)
 
 let die msg =
   write Escape_command.clear_screen;
@@ -68,6 +68,7 @@ type key =
   | Backspace
   | Enter
   | Esc
+  | Tab
   | Ch of char
 
 let read_key () =
@@ -103,6 +104,7 @@ let read_key () =
       match c with
       | '\r' -> Enter
       | '\127' -> Backspace
+      | '\t' -> Tab
       | _ -> Ch c
   with End_of_file -> Nothing
 
@@ -283,7 +285,7 @@ end = struct
       Editor_buffer.append_row t.buf (t.cy - 1) ""
     end;
     Editor_buffer.insert_char t.buf c ~y:t.cy ~x:t.cx;
-    t.cx <- t.cx + 1;
+    t.cx <- t.cx + if c = '\t' then Settings.kilo_tabstop else 1;
     t.dirty <- true
 
   let insert_newline t =
@@ -390,6 +392,7 @@ end = struct
       | Ch c when c = ctrl 'f' -> find t; `Continue;
       (* insert/delete text *)
       | Enter -> insert_newline t; `Continue
+      | Tab -> insert_char t '\t'; `Continue
       | Del -> move_cursor t `Right; delete_char t; `Continue
       | Backspace -> delete_char t; `Continue
       | Ch c when c = ctrl 'h' -> delete_char t; `Continue
