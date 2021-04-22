@@ -16,10 +16,47 @@ let create s =
   }
 
 let rendered_tab = S.make Settings.kilo_tabstop ' '
-let render row =
-  let s = DL.get row in
-  S.nreplace ~str:s ~sub:"\t" ~by:rendered_tab
+let render raw_text =
+  S.nreplace ~str:raw_text ~sub:"\t" ~by:rendered_tab
 
+let to_visual_x raw_text x =
+  let vx = ref 0 in
+  for i = 0 to x - 1 do
+    if S.get raw_text i = '\t' then
+      vx := !vx + Settings.kilo_tabstop
+    else
+      vx := !vx + 1
+  done;
+  !vx
+
+let to_real_x raw_text vx =
+  let x = ref 0 in
+  let i = ref 0 in
+  while !i < vx do
+    if S.get raw_text !x = '\t' then
+      i := !i + Settings.kilo_tabstop
+    else
+      i := !i + 1;
+    x := !x + 1
+  done;
+  !x
+
+let%test_module "Renderer test" = (module struct
+  let%test "render" =
+    render "hoge\tfuga" = "hoge        fuga"
+
+  let%test "rx_of_cx without tab" =
+    to_visual_x "hoge\tfuga" 3 = 3
+
+  let%test "rx_of_cx with tab" =
+    to_visual_x "hoge\tfuga" 6 = 13
+
+  let%test "cx_of_rx without tab" =
+    to_real_x "hoge\tfuga" 3 = 3
+
+  let%test "cx_of_rx with tab" =
+    to_real_x "hoge\tfuga" 13 = 6
+end)
 let rows t = DL.length t.first_row
 
 (** move current line to y *)
@@ -35,7 +72,7 @@ let cols t y =
     0
   else begin
     move t y;
-    S.length @@ render t.curr_row
+    S.length (DL.get t.curr_row |> render)
   end
 
 let append_row t y row =
@@ -66,32 +103,44 @@ let join_row t y =
 let insert_newline t ~y ~x =
   move t y;
   let curr = DL.get t.curr_row in
+  let x = to_real_x curr x in
   let before = S.slice ~last:x curr in
   let at_and_after = S.slice ~first:x curr in
   DL.set t.curr_row before;
   append_row t y at_and_after
 
-(* FIXME: render後のxを与えられるが、raw stringのxでinsertしている *)
 let insert_char t c ~y ~x =
   move t y;
   let row = DL.get t.curr_row in
+  let x = to_real_x row x in
   DL.set t.curr_row @@
     (S.slice ~last:x row) ^ (S.make 1 c) ^ (S.slice ~first:x row)
 
-(* FIXME: render後のxを与えられるが、raw stringのxでdeleteしている *)
 let delete_char t ~y ~x =
   move t y;
   let row = DL.get t.curr_row in
+  let x = to_real_x row x in
   DL.set t.curr_row @@ (S.slice ~last:x row) ^ (S.slice ~first:(x+1) row)
+
+let get_row t y =
+  move t y;
+  DL.get t.curr_row |> render
 
 let get t ~y ~x ~len =
   move t y;
-  let rendered = render t.curr_row in
-  let rendered_len = S.length rendered in
-  if rendered_len <= x then
+  let row = DL.get t.curr_row |> render in
+  let row_len = S.length row in
+  if row_len <= x then
     ""
   else
-    StringLabels.sub rendered ~pos:x ~len:(BatInt.min len (rendered_len - x))
+    StringLabels.sub row ~pos:x ~len:(BatInt.min len (row_len - x))
+
+let get_position_in_row t y query =
+  move t y;
+  let row = DL.get t.curr_row in
+  try
+    BatString.find row query
+  with Not_found -> -1
 
 let to_string t =
   let open Settings in

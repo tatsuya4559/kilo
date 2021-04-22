@@ -127,7 +127,7 @@ end = struct
     screencols: int;
 
     (* cursor position *)
-    mutable cx: int;
+    mutable cx: int; (* visual position *)
     mutable cy: int;
 
     (* offsets *)
@@ -266,6 +266,7 @@ end = struct
     in
     (* update y first because the max length of row depends on t.cy *)
     t.cy <- if cy < 0 then 0 else if cy > rows t.buf then rows t.buf else cy ;
+    (* FIXME: consider cx put in the middle of hard tab *)
     t.cx <- if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx
 
   let delete_row t =
@@ -322,6 +323,16 @@ end = struct
     in
     prompt' t ""
 
+  let find t =
+    match prompt t "Search: %s (ESC to cancel)" with
+    | None -> ()
+    | Some query ->
+        for i = 0 to rows t.buf - 1 do
+          match Editor_buffer.get_position_in_row t.buf i query with
+          | -1 -> ()
+          | x -> ( t.cy <- i; t.cx <- x)
+        done
+
   let save_file t =
     let open BatFile in
     if Option.is_none t.filename then begin
@@ -365,14 +376,16 @@ end = struct
       | Page_down -> move_cursor t `Full_down; `Continue
       | Home -> move_cursor t `Head; `Continue
       | End -> move_cursor t `Tail; `Continue
-      | Ch c when c = ctrl 'p' -> move_cursor t `Up; `Continue
-      | Ch c when c = ctrl 'n' -> move_cursor t `Down; `Continue
-      | Ch c when c = ctrl 'f' -> move_cursor t `Right; `Continue
-      | Ch c when c = ctrl 'b' -> move_cursor t `Left; `Continue
-      | Ch c when c = ctrl 'a' -> move_cursor t `Head; `Continue
-      | Ch c when c = ctrl 'e' -> move_cursor t `Tail; `Continue
+      (* | Ch c when c = ctrl 'p' -> move_cursor t `Up; `Continue *)
+      (* | Ch c when c = ctrl 'n' -> move_cursor t `Down; `Continue *)
+      (* | Ch c when c = ctrl 'f' -> move_cursor t `Right; `Continue *)
+      (* | Ch c when c = ctrl 'b' -> move_cursor t `Left; `Continue *)
+      (* | Ch c when c = ctrl 'a' -> move_cursor t `Head; `Continue *)
+      (* | Ch c when c = ctrl 'e' -> move_cursor t `Tail; `Continue *)
       (* save file *)
       | Ch c when c = ctrl 's' -> save_file t; `Continue
+      (* search *)
+      | Ch c when c = ctrl 'f' -> find t; `Continue;
       (* insert/delete text *)
       | Enter -> insert_newline t; `Continue
       | Del -> move_cursor t `Right; delete_char t; `Continue
