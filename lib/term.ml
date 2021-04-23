@@ -199,7 +199,7 @@ end = struct
       let row =
         (* text buffer *)
         if filerow < rows t.buf then begin
-          Editor_buffer.get t.buf ~y:filerow ~x:t.coloff ~len:t.screencols
+          Editor_buffer.get_sub t.buf ~y:filerow ~x:t.coloff ~len:t.screencols
         (* welcome text *)
         end else if rows t.buf = 1
           && cols t.buf 0 = 0
@@ -273,7 +273,7 @@ end = struct
     (* update y first because the max length of row depends on t.cy *)
     t.cy <- if cy < 0 then 0 else if cy > rows t.buf then rows t.buf else cy ;
     let cx = if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx in
-    t.cx <- Editor_buffer.fix_pos t.buf ~y:t.cy ~x:cx
+    t.cx <- Editor_buffer.adjust_x_pos t.buf ~y:t.cy ~x:cx
 
   let delete_row t =
     if rows t.buf <> 1 then begin

@@ -119,7 +119,7 @@ let get_row t y =
   move t y;
   DL.get t.curr_row |> render
 
-let get t ~y ~x ~len =
+let get_sub t ~y ~x ~len =
   move t y;
   let row = DL.get t.curr_row |> render in
   let row_len = S.length row in
@@ -144,7 +144,7 @@ let is_tab t ~y ~x =
   else
     curr.[x] = '\t'
 
-let fix_pos t ~y ~x =
+let adjust_x_pos t ~y ~x =
   if y < 0 || rows t <= y then
     0
   else begin

@@ -32,7 +32,7 @@ val get_row : t -> int -> string
 
 (** get contents of buffer that starts at (`x`, `y`) and has `len` length at most.
  *  x and y are indexes from 0. *)
-val get : t -> y:int -> x:int -> len:int -> string
+val get_sub : t -> y:int -> x:int -> len:int -> string
 
 (** get x position of query in row y
  * return -1 if not found *)
@@ -41,8 +41,8 @@ val get_position_in_row : t -> int -> string -> int
 (** wheather char at x, y is a hard tab *)
 val is_tab : t -> y:int -> x:int -> bool
 
-(** fix x coordinate if it is in the middle of hard tab *)
-val fix_pos : t -> y:int -> x:int -> int
+(** adjust x coordinate if it is in the middle of hard tab *)
+val adjust_x_pos : t -> y:int -> x:int -> int
 
 (** single string representation of buffer *)
 val to_string : t -> string
