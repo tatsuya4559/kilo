@@ -22,7 +22,7 @@ let render raw_text =
 let to_visual_x raw_text x =
   let vx = ref 0 in
   for i = 0 to x - 1 do
-    if S.get raw_text i = '\t' then
+    if i < S.length raw_text && S.get raw_text i = '\t' then
       vx := !vx + Settings.kilo_tabstop
     else
       vx := !vx + 1
@@ -33,7 +33,7 @@ let to_real_x raw_text vx =
   let x = ref 0 in
   let i = ref 0 in
   while !i < vx do
-    if S.get raw_text !x = '\t' then
+    if !x < S.length raw_text && S.get raw_text !x = '\t' then
       i := !i + Settings.kilo_tabstop
     else
       i := !i + 1;
@@ -46,20 +46,26 @@ let%test_module "Renderer test" = (module struct
   let%test "render" =
     render "hoge\tfuga" = "hoge        fuga"
 
-  let%test "to_visual_x without tab" =
+  let%test _ =
+    to_visual_x "hoge\tfuga" 9 = 16
+
+  let%test _ =
     to_visual_x "hoge\tfuga" 3 = 3
 
-  let%test "to_visual_x with tab" =
+  let%test _ =
     to_visual_x "hoge\tfuga" 6 = 13
 
-  let%test "to_real_x without tab" =
+  let%test _ =
     to_real_x "hoge\tfuga" 3 = 3
 
-  let%test "to_real_x with tab" =
+  let%test _ =
     to_real_x "hoge\tfuga" 13 = 6
 
-  let%test "to_real_x with last tab" =
+  let%test _ =
     to_real_x "hoge\tfuga" 11 = 4
+
+  let%test _ =
+    to_real_x "hoge\tfuga" 16 = 9
 end)
 let rows t = DL.length t.first_row
 
@@ -150,7 +156,16 @@ let is_tab t ~y ~x =
   move t y;
   let curr = DL.get t.curr_row in
   let x = to_real_x curr x in
-  curr.[x] = '\t'
+  S.length curr > x && curr.[x] = '\t'
+
+let fix_pos t ~y ~x =
+  if y >= rows t then
+    0
+  else begin
+    move t y;
+    let curr = DL.get t.curr_row in
+    to_real_x curr x |> to_visual_x curr
+  end
 
 let to_string t =
   let open Settings in

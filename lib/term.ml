@@ -257,7 +257,11 @@ end = struct
     let cx, cy = match dir with
       | `Up -> t.cx, t.cy - 1
       | `Down -> t.cx, t.cy + 1
-      | `Right -> t.cx + 1, t.cy
+      | `Right ->
+          if Editor_buffer.is_tab t.buf ~y:t.cy ~x:(t.cx + 1) then
+            t.cx + Settings.kilo_tabstop, t.cy
+          else
+            t.cx + 1, t.cy
       | `Left -> t.cx - 1, t.cy
       | `Top -> t.cx, 0
       | `Bottom -> t.cx, rows t.buf
@@ -269,7 +273,8 @@ end = struct
     (* update y first because the max length of row depends on t.cy *)
     t.cy <- if cy < 0 then 0 else if cy > rows t.buf then rows t.buf else cy ;
     (* FIXME: consider cx put in the middle of hard tab *)
-    t.cx <- if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx
+    let cx = if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx in
+    t.cx <- Editor_buffer.fix_pos t.buf ~y:t.cy ~x:cx
 
   let delete_row t =
     if rows t.buf <> 1 then begin
