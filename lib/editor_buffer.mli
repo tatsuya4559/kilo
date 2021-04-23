@@ -15,9 +15,6 @@ val append_row : t -> int -> string -> unit
 (** delete row at y *)
 val delete_row : t -> int -> unit
 
-(** append string to row y *)
-val append_string : t -> int -> string -> unit
-
 (** join row y and y+1 *)
 val join_row : t -> int -> unit
 

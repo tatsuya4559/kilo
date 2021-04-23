@@ -15,9 +15,9 @@ let create s =
     curr_rownum = 0;
   }
 
-let rendered_tab = S.make Settings.kilo_tabstop ' '
+let visual_tab = S.make Settings.kilo_tabstop ' '
 let render raw_text =
-  S.nreplace ~str:raw_text ~sub:"\t" ~by:rendered_tab
+  S.nreplace ~str:raw_text ~sub:"\t" ~by:visual_tab
 
 let to_visual_x raw_text x =
   let vx = ref 0 in
@@ -46,27 +46,15 @@ let%test_module "Renderer test" = (module struct
   let%test "render" =
     render "hoge\tfuga" = "hoge        fuga"
 
-  let%test _ =
-    to_visual_x "hoge\tfuga" 9 = 16
-
-  let%test _ =
-    to_visual_x "hoge\tfuga" 3 = 3
-
-  let%test _ =
-    to_visual_x "hoge\tfuga" 6 = 13
-
-  let%test _ =
-    to_real_x "hoge\tfuga" 3 = 3
-
-  let%test _ =
-    to_real_x "hoge\tfuga" 13 = 6
-
-  let%test _ =
-    to_real_x "hoge\tfuga" 11 = 4
-
-  let%test _ =
-    to_real_x "hoge\tfuga" 16 = 9
+  let%test _ = to_visual_x "hoge\tfuga" 9 = 16
+  let%test _ = to_visual_x "hoge\tfuga" 3 = 3
+  let%test _ = to_visual_x "hoge\tfuga" 6 = 13
+  let%test _ = to_real_x "hoge\tfuga" 3 = 3
+  let%test _ = to_real_x "hoge\tfuga" 13 = 6
+  let%test _ = to_real_x "hoge\tfuga" 11 = 4
+  let%test _ = to_real_x "hoge\tfuga" 16 = 9
 end)
+
 let rows t = DL.length t.first_row
 
 (** move current line to y *)
@@ -75,10 +63,11 @@ let move t y =
     let dy = y - t.curr_rownum in
     t.curr_row <- DL.skip t.curr_row dy;
     t.curr_rownum <- y
-  end else assert false (* for debug *)
+  end else
+    assert false (* for debug *)
 
 let cols t y =
-  if y >= rows t then
+  if y < 0 || rows t <= y then
     0
   else begin
     move t y;
@@ -98,15 +87,12 @@ let delete_row t y =
   end else
     t.curr_row <- DL.drop t.curr_row
 
-let append_string t y str =
-  move t y;
-  let curr = DL.get t.curr_row in
-  DL.set t.curr_row @@ curr ^ str
-
 let join_row t y =
   if y < rows t - 1 then begin
     move t y;
-    append_string t y (DL.get (DL.next t.curr_row));
+    let curr = DL.get t.curr_row in
+    let next = DL.get (DL.next t.curr_row) in
+    DL.set t.curr_row (curr ^ next);
     delete_row t (y + 1)
   end
 
@@ -114,17 +100,14 @@ let insert_newline t ~y ~x =
   move t y;
   let curr = DL.get t.curr_row in
   let x = to_real_x curr x in
-  let before = S.slice ~last:x curr in
-  let at_and_after = S.slice ~first:x curr in
-  DL.set t.curr_row before;
-  append_row t y at_and_after
+  DL.set t.curr_row (S.slice ~last:x curr);
+  append_row t y (S.slice ~first:x curr)
 
 let insert_char t c ~y ~x =
   move t y;
   let row = DL.get t.curr_row in
   let x = to_real_x row x in
-  DL.set t.curr_row @@
-    (S.slice ~last:x row) ^ (S.make 1 c) ^ (S.slice ~first:x row)
+  DL.set t.curr_row @@ (S.slice ~last:x row) ^ (S.make 1 c) ^ (S.slice ~first:x row)
 
 let delete_char t ~y ~x =
   move t y;
@@ -149,17 +132,20 @@ let get_position_in_row t y query =
   move t y;
   let row = DL.get t.curr_row in
   try
-    BatString.find row query
+    BatString.find row query |> to_visual_x row
   with Not_found -> -1
 
 let is_tab t ~y ~x =
   move t y;
   let curr = DL.get t.curr_row in
   let x = to_real_x curr x in
-  S.length curr > x && curr.[x] = '\t'
+  if x < 0 || S.length curr <= x then
+    false
+  else
+    curr.[x] = '\t'
 
 let fix_pos t ~y ~x =
-  if y >= rows t then
+  if y < 0 || rows t <= y then
     0
   else begin
     move t y;
