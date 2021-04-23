@@ -272,7 +272,6 @@ end = struct
     in
     (* update y first because the max length of row depends on t.cy *)
     t.cy <- if cy < 0 then 0 else if cy > rows t.buf then rows t.buf else cy ;
-    (* FIXME: consider cx put in the middle of hard tab *)
     let cx = if cx < 0 then 0 else if cx > cols t.buf t.cy then cols t.buf t.cy else cx in
     t.cx <- Editor_buffer.fix_pos t.buf ~y:t.cy ~x:cx
 
