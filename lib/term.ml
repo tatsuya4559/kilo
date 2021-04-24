@@ -98,10 +98,6 @@ let highlight ~matching text =
 let write = output_string stdout
 let flush () = flush stdout
 
-let is_ctrl c =
-  let code = Char.code c in
-  (0x00 <= code && code <= 0x1f) || code = 0x7f
-
 let die msg =
   write Escape_command.clear_screen;
   write Escape_command.cursor_topleft;
@@ -125,7 +121,7 @@ type key =
   | Enter
   | Esc
   | Tab
-  | Ctrl of char
+  | Ctrl of char (* char must be a capital case *)
   | Ch of char
 
 let read_key () =
@@ -399,7 +395,7 @@ end = struct
           prompt' t (BatString.rchop ~n:1 input)
       | Ctrl 'H' ->
           prompt' t (BatString.rchop ~n:1 input)
-      | Ch c when not @@ is_ctrl c ->
+      | Ch c ->
           prompt' t (sprintf "%s%c" input c)
       | _ -> prompt' t input
     in
@@ -499,7 +495,7 @@ end = struct
       | Backspace -> delete_char t; `Continue
       | Ctrl 'H' -> delete_char t; `Continue
       | Ctrl 'D' -> delete_row t; `Continue
-      | Ch c when not @@ is_ctrl c -> insert_char t c; `Continue
+      | Ch c -> insert_char t c; `Continue
       (* no keypress *)
       | _ -> `Wait
     in
