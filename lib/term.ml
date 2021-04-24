@@ -108,6 +108,13 @@ let read_key () =
       | _ -> Ch c
   with End_of_file -> Nothing
 
+type direction = Forward | Backward
+
+type search_context = {
+  mutable direction: direction;
+  mutable query: string;
+}
+
 module Editor_config : sig
   (** global state of editor *)
   type t
@@ -146,6 +153,8 @@ end = struct
     mutable statusmsg_time: float; (* UNIX time in seconds *)
 
     mutable quitting_count: int;
+
+    search_context: search_context;
   }
 
   let create () =
@@ -164,6 +173,10 @@ end = struct
            statusmsg = "";
            statusmsg_time = 0.;
            quitting_count = 0;
+           search_context = {
+             direction = Forward;
+             query = "";
+           };
          }
 
   (* shorthands *)
@@ -313,8 +326,9 @@ end = struct
       t.dirty <- true
     end
 
-  let prompt t msgfmt =
+  let prompt ?(callback=(fun _ -> ())) t msgfmt =
     let rec prompt' t input =
+      callback input;
       set_statusmsg t (sprintf msgfmt input);
       refresh_screen t;
       match read_key () with
@@ -330,26 +344,48 @@ end = struct
     in
     prompt' t ""
 
+  let search_and_jump t start_y query =
+    let rec search_row y =
+      match Editor_buffer.get_position_in_row t.buf y query with
+      | -1 ->
+          (match t.search_context.direction with
+          | Forward -> if y < rows t.buf - 1 then search_row (y+1)
+          | Backward -> if y > 0 then search_row (y-1))
+      | x -> (t.cy <- y; t.cx <- x)
+    in
+    if query <> "" then search_row start_y
+
   let find t =
-    match prompt t "Search: %s (ESC to cancel)" with
-    | None -> ()
-    | Some query ->
-        let max_y = rows t.buf in
-        let rec find' y =
-          match Editor_buffer.get_position_in_row t.buf y query with
-          | -1 -> if y < max_y then find' (y+1) else ()
-          | x -> ( t.cy <- y; t.cx <- x)
-        in
-        find' 0
+    t.search_context.direction <- Forward;
+    let orig_x, orig_y = t.cx, t.cy in
+    match prompt t "Search: %s (ESC to cancel)" ~callback:(search_and_jump t t.cy) with
+    | None -> (* reset position *)
+        t.cx <- orig_x;
+        t.cy <- orig_y
+    | Some query -> (* save query *)
+        t.search_context.query <- query
+
+  let find_next t =
+    t.search_context.direction <- Forward;
+    let start_y = if t.cy >= rows t.buf - 1 then rows t.buf - 1 else t.cy + 1 in
+    search_and_jump t start_y t.search_context.query
+
+  let find_prev t =
+    t.search_context.direction <- Backward;
+    let start_y = if t.cy <= 0 then 0 else t.cy - 1 in
+    search_and_jump t start_y t.search_context.query
+
+  let get_filename t =
+    if Option.is_some t.filename then
+      t.filename
+    else
+      match prompt t "Save as: %s (Esc to cancel)" with
+      | Some _ as f -> t.filename <- f; f
+      | None -> None
 
   let save_file t =
     let open BatFile in
-    if Option.is_none t.filename then begin
-      match prompt t "Save as: %s (Esc to cancel)" with
-      | None -> ()
-      | Some filename -> t.filename <- Some filename
-    end;
-    match t.filename with
+    match get_filename t with
     | None ->
         set_statusmsg t "Save aborted"
     | Some filename ->
@@ -385,16 +421,12 @@ end = struct
       | Page_down -> move_cursor t `Full_down; `Continue
       | Home -> move_cursor t `Head; `Continue
       | End -> move_cursor t `Tail; `Continue
-      (* | Ch c when c = ctrl 'p' -> move_cursor t `Up; `Continue *)
-      (* | Ch c when c = ctrl 'n' -> move_cursor t `Down; `Continue *)
-      (* | Ch c when c = ctrl 'f' -> move_cursor t `Right; `Continue *)
-      (* | Ch c when c = ctrl 'b' -> move_cursor t `Left; `Continue *)
-      (* | Ch c when c = ctrl 'a' -> move_cursor t `Head; `Continue *)
-      (* | Ch c when c = ctrl 'e' -> move_cursor t `Tail; `Continue *)
       (* save file *)
       | Ch c when c = ctrl 's' -> save_file t; `Continue
       (* search *)
-      | Ch c when c = ctrl 'f' -> find t; `Continue;
+      | Ch c when c = ctrl 'f' -> find t; `Continue
+      | Ch c when c = ctrl 'n' -> find_next t; `Continue
+      | Ch c when c = ctrl 'p' -> find_prev t; `Continue
       (* insert/delete text *)
       | Enter -> insert_newline t; `Continue
       | Tab -> insert_char t '\t'; `Continue
