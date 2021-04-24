@@ -98,12 +98,9 @@ let highlight ~matching text =
 let write = output_string stdout
 let flush () = flush stdout
 
-let ctrl c =
-  Char.chr ((Char.code c) land 0x1f)
-
 let is_ctrl c =
   let code = Char.code c in
-  (0x00 <= code && code <= 0x1f)
+  (0x00 <= code && code <= 0x1f) || code = 0x7f
 
 let die msg =
   write Escape_command.clear_screen;
@@ -112,7 +109,7 @@ let die msg =
   eprintf "%s\n" msg;
   exit 1
 
-(* TODO: distinguish ctrl, alt keys *)
+(* TODO: distinguish alt keys *)
 type key =
   | Nothing
   | Arrow_up
@@ -128,6 +125,7 @@ type key =
   | Enter
   | Esc
   | Tab
+  | Ctrl of char
   | Ch of char
 
 let read_key () =
@@ -162,8 +160,9 @@ let read_key () =
     end else
       match c with
       | '\r' -> Enter
-      | '\127' -> Backspace
+      | '\x7f' -> Backspace
       | '\t' -> Tab
+      | c when '\x01' <= c && c <= '\x1a' -> Ctrl (Char.chr (Char.code c + 64))
       | _ -> Ch c
   with End_of_file -> Nothing
 
@@ -398,9 +397,9 @@ end = struct
       | Esc -> set_statusmsg t ""; None
       | Backspace ->
           prompt' t (BatString.rchop ~n:1 input)
-      | Ch c when c = ctrl 'h' ->
+      | Ctrl 'H' ->
           prompt' t (BatString.rchop ~n:1 input)
-      | Ch c when (not @@ is_ctrl c) && Char.code c < 128 ->
+      | Ch c when not @@ is_ctrl c ->
           prompt' t (sprintf "%s%c" input c)
       | _ -> prompt' t input
     in
@@ -467,7 +466,7 @@ end = struct
     refresh_screen t;
     let result = match read_key () with
       (* quit *)
-      | Ch c when c = ctrl 'q' ->
+      | Ctrl 'Q' ->
           if t.dirty && t.quitting_count < 1 then begin
             t.quitting_count <- t.quitting_count + 1;
             set_statusmsg t "WARNING!!! File has unsaved changes. Press Ctrl-Q again to quit.";
@@ -488,18 +487,18 @@ end = struct
       | Home -> move_cursor t `Head; `Continue
       | End -> move_cursor t `Tail; `Continue
       (* save file *)
-      | Ch c when c = ctrl 's' -> save_file t; `Continue
+      | Ctrl 'S' -> save_file t; `Continue
       (* search *)
-      | Ch c when c = ctrl 'f' -> find t; `Continue
-      | Ch c when c = ctrl 'n' -> find_next t; `Continue
-      | Ch c when c = ctrl 'p' -> find_prev t; `Continue
+      | Ctrl 'F' -> find t; `Continue
+      | Ctrl 'N' -> find_next t; `Continue
+      | Ctrl 'P' -> find_prev t; `Continue
       (* insert/delete text *)
       | Enter -> insert_newline t; `Continue
       | Tab -> insert_char t '\t'; `Continue
       | Del -> move_cursor t `Right; delete_char t; `Continue
       | Backspace -> delete_char t; `Continue
-      | Ch c when c = ctrl 'h' -> delete_char t; `Continue
-      | Ch c when c = ctrl 'd' -> delete_row t; `Continue
+      | Ctrl 'H' -> delete_char t; `Continue
+      | Ctrl 'D' -> delete_row t; `Continue
       | Ch c when not @@ is_ctrl c -> insert_char t c; `Continue
       (* no keypress *)
       | _ -> `Wait
