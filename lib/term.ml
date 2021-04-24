@@ -22,6 +22,22 @@ let with_raw_mode fn =
     };
   Fun.protect fn ~finally:(fun () -> tcsetattr stdin TCSAFLUSH termios)
 
+type color =
+  | Default
+  | Red
+  | Blue
+  | Inv_yellow
+
+type highlight_group =
+  | Normal
+  | Number
+  | Match
+
+let color_of_hlgroup = function
+  | Normal -> Default
+  | Number -> Red
+  | Match -> Inv_yellow
+
 module Escape_command = struct
   let clear_screen = "\x1b[2J"
   let cursor_topleft = "\x1b[H"
@@ -34,7 +50,50 @@ module Escape_command = struct
   let underlined_text s = sprintf "\x1b[4m%s\x1b[m" s
   let blinking_text s = sprintf "\x1b[5m%s\x1b[m" s
   let inverted_text s = sprintf "\x1b[7m%s\x1b[m" s
+  let color = function
+    | Default -> "\x1b[39m\x1b[m"
+    | Red -> "\x1b[31m"
+    | Blue -> "\x1b[34m"
+    | Inv_yellow -> "\x1b[33m\x1b[7m"
 end
+
+let get_hlgroups ~matching text =
+  let match_pos, match_len =
+    try
+      (BatString.find text matching, String.length matching)
+    with Not_found -> (0, 0)
+  in
+  let rec loop i hlgroups =
+    if i = String.length text then
+      List.rev hlgroups
+    else if match_pos <= i && i < match_pos + match_len then
+      loop (i+1) (Match :: hlgroups)
+    else if BatChar.is_digit text.[i] then
+      loop (i+1) (Number :: hlgroups)
+    else
+      loop (i+1) (Normal :: hlgroups)
+  in
+  loop 0 []
+
+let colorize text hlgroups =
+  assert (String.length text = List.length hlgroups);
+  let colored_text = ref "" in
+  let prev_hl = ref Normal in
+  BatSeq.iter2 (fun ch hl ->
+    if hl = !prev_hl then begin
+      colored_text := !colored_text ^ (String.make 1 ch)
+    end else begin
+      prev_hl := hl;
+      colored_text := !colored_text
+        ^ (Escape_command.color @@ color_of_hlgroup hl)
+        ^ (String.make 1 ch)
+    end
+  ) (String.to_seq text) (List.to_seq hlgroups);
+  colored_text := !colored_text ^ (Escape_command.color Default);
+  !colored_text
+
+let highlight ~matching text =
+  colorize text (get_hlgroups ~matching text)
 
 let write = output_string stdout
 let flush () = flush stdout
@@ -113,6 +172,7 @@ type direction = Forward | Backward
 type search_context = {
   mutable direction: direction;
   mutable query: string;
+  mutable matching: string;
 }
 
 module Editor_config : sig
@@ -176,6 +236,7 @@ end = struct
            search_context = {
              direction = Forward;
              query = "";
+             matching = "";
            };
          }
 
@@ -213,6 +274,7 @@ end = struct
         (* text buffer *)
         if filerow < rows t.buf then begin
           Editor_buffer.get_sub t.buf ~y:filerow ~x:t.coloff ~len:t.screencols
+          |> highlight ~matching:t.search_context.matching
         (* welcome text *)
         end else if rows t.buf = 1
           && cols t.buf 0 = 0
@@ -351,7 +413,10 @@ end = struct
           (match t.search_context.direction with
           | Forward -> if y < rows t.buf - 1 then search_row (y+1)
           | Backward -> if y > 0 then search_row (y-1))
-      | x -> (t.cy <- y; t.cx <- x)
+      | x ->
+          t.search_context.matching <- query;
+          t.cy <- y;
+          t.cx <- x
     in
     if query <> "" then search_row start_y
 
