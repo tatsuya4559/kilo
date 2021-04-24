@@ -425,6 +425,7 @@ end = struct
     let orig_x, orig_y = t.cx, t.cy in
     match prompt t "Search: %s (ESC to cancel)" ~callback:(search_and_jump t t.cy) with
     | None -> (* reset position *)
+        t.search_context.matching <- "";
         t.cx <- orig_x;
         t.cy <- orig_y
     | Some query -> (* save query *)
