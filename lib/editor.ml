@@ -25,7 +25,7 @@ type t = {
   mutable filename: string option;
   buf: Editor_buffer.t;
   mutable dirty: bool;
-  syntax: Highlight.Syntax.t;
+  mutable syntax: Highlight.Syntax.t;
 
   (* status message *)
   mutable statusmsg: string;
@@ -80,7 +80,11 @@ let open_file t filename =
       readline input 0 (Editor_buffer.create (BatIO.read_line input))
     with BatIO.No_more_input -> Editor_buffer.create ""
   ) in
-  { t with filename = Some filename; buf}
+  { t with
+    filename = Some filename;
+    buf;
+    syntax = Highlight.Syntax.detect_filetype filename;
+  }
 
 let welcome_string width =
   let welcome = sprintf "Kilo editor -- version %s" Settings.kilo_version in

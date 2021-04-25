@@ -14,15 +14,26 @@ module Syntax = struct
     flags: Highlight_flag_set.t;
   }
 
-  let create filetype filematch flag_list =
-    { filetype; filematch; flags = Highlight_flag_set.of_list flag_list }
-
-  let default = create "no filetype" [] []
+  let default = {
+    filetype = "no filetype";
+    filematch = [];
+    flags = Highlight_flag_set.empty;
+  }
 
   (* syntax database *)
   let db = [
-    create "ocaml" ["ml"; "mli"] [Highlight_numbers];
+    { filetype = "ocaml";
+      filematch = [".ml"; ".mli"];
+      flags = Highlight_flag_set.of_list [Highlight_numbers];
+    };
   ]
+
+  let detect_filetype filename =
+    let extension = Filename.extension filename in
+    match List.filter (fun syntax -> List.mem extension syntax.filematch) db with
+    | [] -> default
+    | hd :: _ -> hd
+
 end
 
 type highlight_group =
