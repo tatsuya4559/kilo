@@ -48,6 +48,31 @@ module Escape_command = struct
 end
 
 module Highlight = struct
+  type highlight_flag =
+    | Highlight_numbers
+
+  module Highlight_flag_set =
+    BatSet.Make(struct
+      type t = highlight_flag
+      let compare = Stdlib.compare
+    end)
+
+  module Syntax = struct
+    type t = {
+      filetype: string;
+      filematch: string list;
+      flags: Highlight_flag_set.t;
+    }
+
+    let create filetype filematch flag_list =
+      { filetype; filematch; flags = Highlight_flag_set.of_list flag_list }
+
+    (* syntax database *)
+    let db = [
+      create "ocaml" ["ml"; "mli"] [Highlight_numbers];
+    ]
+  end
+
   type highlight_group =
     | Normal
     | Number
@@ -67,7 +92,7 @@ module Highlight = struct
 
   (* get_hlgroups returns a list of highlight group.
    * Each element is corresponding to respective chars in text *)
-  let get_hlgroups ~matching text =
+  let get_hlgroups ~matching (syntax:Syntax.t) text =
     let match_pos, match_len =
       try
         (BatString.find text matching, String.length matching)
@@ -83,7 +108,8 @@ module Highlight = struct
         List.rev hlgroups
       else if match_pos <= i && i < match_pos + match_len then
         loop (i+1) (Match :: hlgroups)
-      else if is_number text.[i] is_prev_delimiter prev_hl then
+      else if Highlight_flag_set.mem Highlight_numbers syntax.flags &&
+        is_number text.[i] is_prev_delimiter prev_hl then
         loop (i+1) (Number :: hlgroups)
       else
         loop (i+1) (Normal :: hlgroups)
@@ -107,8 +133,8 @@ module Highlight = struct
     colored_text := !colored_text ^ (Escape_command.color Default);
     !colored_text
 
-  let highlight ~matching text =
-    colorize text (get_hlgroups ~matching text)
+  let highlight ~matching syntax text =
+    colorize text (get_hlgroups ~matching syntax text)
 end
 
 let write = output_string stdout
