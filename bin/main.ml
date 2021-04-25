@@ -2,16 +2,16 @@ open Kilo
 
 let () =
   let argv = Sys.argv in
-  Term.with_raw_mode (fun () ->
-    let editor_config =
+  Terminal.with_raw_mode (fun () ->
+    let editor =
       match Editor.create () with
-      | None -> Term.die "fail to create editor config"
-      | Some x ->
+      | None -> Terminal.die "fail to create editor config"
+      | Some editor ->
           if Array.length argv >= 2 then
             let filename = argv.(1) in
-            Editor.open_file x filename
+            Editor.open_file editor filename
           else
-            x
+            editor
     in
-    Editor.set_statusmsg editor_config "HELP: ^S = save | ^Q = quit | ^F = find";
-    Editor.process_keypress editor_config)
+    Editor.set_statusmsg editor "HELP: ^S = save | ^Q = quit | ^F = find";
+    Editor.process_keypress editor)

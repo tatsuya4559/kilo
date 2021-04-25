@@ -31,9 +31,9 @@ type highlight_group =
   | Match
 
 let color_of_hlgroup = function
-  | Normal -> Term.Default
-  | Number -> Term.Red
-  | Match -> Term.Inv_yellow
+  | Normal -> Terminal.Default
+  | Number -> Terminal.Red
+  | Match -> Terminal.Inv_yellow
 
 let is_delimiter c =
   BatChar.is_whitespace c || String.contains ",.()+-/*=~%<>[];" c
@@ -78,11 +78,11 @@ let colorize text hlgroups =
     end else begin
       prev_hl := hl;
       colored_text := !colored_text
-        ^ (Term.Escape_command.color @@ color_of_hlgroup hl)
+        ^ (Terminal.Escape_command.color @@ color_of_hlgroup hl)
         ^ (String.make 1 ch)
     end
   ) (String.to_seq text) (List.to_seq hlgroups);
-  colored_text := !colored_text ^ (Term.Escape_command.color Term.Default);
+  colored_text := !colored_text ^ (Terminal.Escape_command.color Terminal.Default);
   !colored_text
 
 let highlight ~matching syntax text =

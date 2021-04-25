@@ -1,5 +1,5 @@
 open Printf
-open Term
+open Terminal
 
 type direction = Forward | Backward
 
