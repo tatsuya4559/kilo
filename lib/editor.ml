@@ -1,7 +1,13 @@
 open Printf
-
 open Term
-open Util
+
+type direction = Forward | Backward
+
+type search_context = {
+  mutable direction: direction;
+  mutable query: string;
+  mutable matching: string;
+}
 
 type t = {
   screenrows: int;
@@ -43,7 +49,7 @@ let create () =
          filename = None;
          buf = Editor_buffer.create "";
          dirty = false;
-         syntax = Highlight.Syntax.create "no filetype" [] [];
+         syntax = Highlight.Syntax.default;
          statusmsg = "";
          statusmsg_time = 0.;
          quitting_count = 0;
@@ -101,8 +107,17 @@ let draw_rows t =
     write "\r\n"
   done
 
+let fit ?(pad=' ') len ~left ~right =
+  let left_len = String.length left in
+  let right_len = String.length right in
+  if (left_len + right_len) <= len then
+    let padding = String.make (len - left_len - right_len) pad in
+    left ^ padding ^ right
+  else
+    StringLabels.sub left ~pos:0 ~len:(len - right_len) ^ right
+
 let draw_status_bar t =
-  let bar = StringFormat.fit t.screencols
+  let bar = fit t.screencols
     ~left:(sprintf "%s%s - %d lines - %d cols"
       (BatOption.default "[No Name]" t.filename)
       (if t.dirty then " [+]" else "")
