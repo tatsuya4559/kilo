@@ -24,7 +24,12 @@ let with_raw_mode fn =
 type color =
   | Default
   | Red
+  | Green
+  | Yellow
   | Blue
+  | Magenta
+  | Cyan
+  | White
   | Inv_yellow
 
 module Escape_command = struct
@@ -42,7 +47,12 @@ module Escape_command = struct
   let color = function
     | Default -> "\x1b[39m\x1b[m"
     | Red -> "\x1b[31m"
+    | Green -> "\x1b[32m"
+    | Yellow -> "\x1b[33m"
     | Blue -> "\x1b[34m"
+    | Magenta -> "\x1b[35m"
+    | Cyan -> "\x1b[36m"
+    | White -> "\x1b[37m"
     | Inv_yellow -> "\x1b[33m\x1b[7m"
 end
 
