@@ -28,16 +28,6 @@ type color =
   | Blue
   | Inv_yellow
 
-type highlight_group =
-  | Normal
-  | Number
-  | Match
-
-let color_of_hlgroup = function
-  | Normal -> Default
-  | Number -> Red
-  | Match -> Inv_yellow
-
 module Escape_command = struct
   let clear_screen = "\x1b[2J"
   let cursor_topleft = "\x1b[H"
@@ -57,43 +47,69 @@ module Escape_command = struct
     | Inv_yellow -> "\x1b[33m\x1b[7m"
 end
 
-let get_hlgroups ~matching text =
-  let match_pos, match_len =
-    try
-      (BatString.find text matching, String.length matching)
-    with Not_found -> (0, 0)
-  in
-  let rec loop i hlgroups =
-    if i = String.length text then
-      List.rev hlgroups
-    else if match_pos <= i && i < match_pos + match_len then
-      loop (i+1) (Match :: hlgroups)
-    else if BatChar.is_digit text.[i] then
-      loop (i+1) (Number :: hlgroups)
-    else
-      loop (i+1) (Normal :: hlgroups)
-  in
-  loop 0 []
+module Highlight = struct
+  type highlight_group =
+    | Normal
+    | Number
+    | Match
 
-let colorize text hlgroups =
-  assert (String.length text = List.length hlgroups);
-  let colored_text = ref "" in
-  let prev_hl = ref Normal in
-  BatSeq.iter2 (fun ch hl ->
-    if hl = !prev_hl then begin
-      colored_text := !colored_text ^ (String.make 1 ch)
-    end else begin
-      prev_hl := hl;
-      colored_text := !colored_text
-        ^ (Escape_command.color @@ color_of_hlgroup hl)
-        ^ (String.make 1 ch)
-    end
-  ) (String.to_seq text) (List.to_seq hlgroups);
-  colored_text := !colored_text ^ (Escape_command.color Default);
-  !colored_text
+  let color_of_hlgroup = function
+    | Normal -> Default
+    | Number -> Red
+    | Match -> Inv_yellow
 
-let highlight ~matching text =
-  colorize text (get_hlgroups ~matching text)
+  let is_delimiter c =
+    BatChar.is_whitespace c || String.contains ",.()+-/*=~%<>[];" c
+
+  let is_number c is_prev_delimiter prev_hl =
+    (BatChar.is_digit c && (is_prev_delimiter || (prev_hl = Number)))
+    || (c = '.' && prev_hl = Number)
+
+  (* get_hlgroups returns a list of highlight group.
+   * Each element is corresponding to respective chars in text *)
+  let get_hlgroups ~matching text =
+    let match_pos, match_len =
+      try
+        (BatString.find text matching, String.length matching)
+      with Not_found -> (0, 0)
+    in
+    let rec loop i hlgroups =
+      let is_prev_delimiter = if i = 0 then true else is_delimiter text.[i-1] in
+      let prev_hl = match hlgroups with
+        | [] -> Normal
+        | hd :: _ -> hd
+      in
+      if i = String.length text then
+        List.rev hlgroups
+      else if match_pos <= i && i < match_pos + match_len then
+        loop (i+1) (Match :: hlgroups)
+      else if is_number text.[i] is_prev_delimiter prev_hl then
+        loop (i+1) (Number :: hlgroups)
+      else
+        loop (i+1) (Normal :: hlgroups)
+    in
+    loop 0 []
+
+  let colorize text hlgroups =
+    assert (String.length text = List.length hlgroups);
+    let colored_text = ref "" in
+    let prev_hl = ref Normal in
+    BatSeq.iter2 (fun ch hl ->
+      if hl = !prev_hl then begin
+        colored_text := !colored_text ^ (String.make 1 ch)
+      end else begin
+        prev_hl := hl;
+        colored_text := !colored_text
+          ^ (Escape_command.color @@ color_of_hlgroup hl)
+          ^ (String.make 1 ch)
+      end
+    ) (String.to_seq text) (List.to_seq hlgroups);
+    colored_text := !colored_text ^ (Escape_command.color Default);
+    !colored_text
+
+  let highlight ~matching text =
+    colorize text (get_hlgroups ~matching text)
+end
 
 let write = output_string stdout
 let flush () = flush stdout
@@ -269,7 +285,7 @@ end = struct
         (* text buffer *)
         if filerow < rows t.buf then begin
           Editor_buffer.get_sub t.buf ~y:filerow ~x:t.coloff ~len:t.screencols
-          |> highlight ~matching:t.search_context.matching
+          |> Highlight.highlight ~matching:t.search_context.matching
         (* welcome text *)
         end else if rows t.buf = 1
           && cols t.buf 0 = 0
