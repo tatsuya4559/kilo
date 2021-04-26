@@ -1,5 +1,5 @@
 (library
   (name kilo)
   (inline_tests)
-  (libraries unix terminal_size batteries)
+  (libraries unix terminal_size batteries pcre)
   (preprocess (pps ppx_inline_test ppx_deriving.show ppx_deriving.ord)))

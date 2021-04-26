@@ -1,30 +1,47 @@
-type highlight_flag =
-  | Highlight_numbers
+type highlight_group =
+  | Normal
+  | String
+  | Number
+  | Match
 
-module Highlight_flag_set =
-  BatSet.Make(struct
-    type t = highlight_flag
-    let compare = Stdlib.compare
-  end)
+let color_of_hlgroup = function
+  | Normal -> Terminal.Default
+  | String -> Terminal.Magenta
+  | Number -> Terminal.Red
+  | Match -> Terminal.Inv_yellow
+
+
+type pattern = {
+  group: highlight_group;
+  regex: string;
+}
 
 module Syntax = struct
   type t = {
     filetype: string;
     filematch: string list;
-    flags: Highlight_flag_set.t;
+    rule: pattern list;
   }
+
 
   let default = {
     filetype = "no filetype";
     filematch = [];
-    flags = Highlight_flag_set.empty;
+    rule = [];
   }
 
   (* syntax database *)
   let db = [
     { filetype = "ocaml";
       filematch = [".ml"; ".mli"];
-      flags = Highlight_flag_set.of_list [Highlight_numbers];
+      rule = [
+        { group = Number;
+          regex = {|\d+\.?\d*|};
+        };
+        { group = String;
+          regex = {|"[^"]*"|};
+        };
+      ];
     };
   ]
 
@@ -36,48 +53,53 @@ module Syntax = struct
 
 end
 
-type highlight_group =
-  | Normal
-  | Number
-  | Match
 
-let color_of_hlgroup = function
-  | Normal -> Terminal.Default
-  | Number -> Terminal.Red
-  | Match -> Terminal.Inv_yellow
+(* textの先頭でpatternsのいずれかにマッチすればgroupとlengthを返す
+ * 見つからなければNormal, 1を返す *)
+let find_at_beggining patterns text =
+  let rec loop patterns =
+    match patterns with
+    | [] -> Normal, 1
+    | pattern :: tl ->
+      try
+        let found = Pcre.pcre_exec ~pos:0 ~pat:pattern.regex ~flags:[`NOTEMPTY] text in
+        let pos, len = found.(0), found.(1) in
+        if pos <> 0 then
+          loop tl
+        else
+          pattern.group, len
+      with Not_found -> loop tl
+  in
+  loop patterns
 
-let is_delimiter c =
-  BatChar.is_whitespace c || String.contains ",.()+-/*=~%<>[];" c
+let ocaml_rule = Syntax.detect_filetype ".ml"
+let%test _ = find_at_beggining ocaml_rule.rule "12" = (Number, 2)
+let%test _ = find_at_beggining ocaml_rule.rule "12." = (Number, 3)
+let%test _ = find_at_beggining ocaml_rule.rule "12.32" = (Number, 5)
+let%test _ = find_at_beggining ocaml_rule.rule "int32" = (Normal, 1)
+let%test _ = find_at_beggining ocaml_rule.rule "\"foo\" 12.32" = (String, 5)
+let%test _ = find_at_beggining ocaml_rule.rule "foo" = (Normal, 1)
 
-let is_number c is_prev_delimiter prev_hl =
-  (BatChar.is_digit c && (is_prev_delimiter || (prev_hl = Number)))
-  || (c = '.' && prev_hl = Number)
-
-(* get_hlgroups returns a list of highlight group.
+(* returns a list of highlight group.
  * Each element is corresponding to respective chars in text *)
-let get_hlgroups ~matching (syntax:Syntax.t) text =
-  let match_pos, match_len =
-    try
-      (BatString.find text matching, String.length matching)
-    with Not_found -> (0, 0)
-  in
+let get_highlights ~matching patterns text =
+  let max = String.length text in
   let rec loop i hlgroups =
-    let is_prev_delimiter = if i = 0 then true else is_delimiter text.[i-1] in
-    let prev_hl = match hlgroups with
-      | [] -> Normal
-      | hd :: _ -> hd
-    in
-    if i = String.length text then
+    if i >= max then
       List.rev hlgroups
-    else if match_pos <= i && i < match_pos + match_len then
-      loop (i+1) (Match :: hlgroups)
-    else if Highlight_flag_set.mem Highlight_numbers syntax.flags &&
-      is_number text.[i] is_prev_delimiter prev_hl then
-      loop (i+1) (Number :: hlgroups)
     else
-      loop (i+1) (Normal :: hlgroups)
+      let group, len = find_at_beggining patterns (BatString.slice ~first:i text) in
+      loop (i+len) ((BatList.make len group) @ hlgroups)
   in
-  loop 0 []
+  let highlights = loop 0 [] in
+  try
+    (* overwrite matching highlights *)
+    let match_pos, match_len = (BatString.find text matching, String.length matching) in
+    (BatList.take match_pos highlights)
+      @ (BatList.make match_len Match)
+      @ (BatList.drop (match_pos + match_len) highlights)
+  with
+    Not_found -> highlights
 
 let colorize text hlgroups =
   assert (String.length text = List.length hlgroups);
@@ -96,5 +118,5 @@ let colorize text hlgroups =
   colored_text := !colored_text ^ (Terminal.Escape_command.color Terminal.Default);
   !colored_text
 
-let highlight ~matching syntax text =
-  colorize text (get_hlgroups ~matching syntax text)
+let highlight ~matching (syntax:Syntax.t) text =
+  colorize text (get_highlights ~matching syntax.rule text)
