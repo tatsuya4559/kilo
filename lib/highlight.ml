@@ -73,7 +73,7 @@ let find_at_beggining patterns text =
   loop patterns
 
 let%test_module "tests" = (module struct
-  let ocaml_syntax = Syntax.detect_filetype ".ml"
+  let ocaml_syntax = Syntax.detect_filetype "test.ml"
   let%test _ = find_at_beggining ocaml_syntax.rule "12" = (Number, 2)
   let%test _ = find_at_beggining ocaml_syntax.rule "12." = (Number, 3)
   let%test _ = find_at_beggining ocaml_syntax.rule "12.32" = (Number, 5)
