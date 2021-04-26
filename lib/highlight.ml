@@ -72,13 +72,15 @@ let find_at_beggining patterns text =
   in
   loop patterns
 
-let ocaml_rule = Syntax.detect_filetype ".ml"
-let%test _ = find_at_beggining ocaml_rule.rule "12" = (Number, 2)
-let%test _ = find_at_beggining ocaml_rule.rule "12." = (Number, 3)
-let%test _ = find_at_beggining ocaml_rule.rule "12.32" = (Number, 5)
-let%test _ = find_at_beggining ocaml_rule.rule "int32" = (Normal, 1)
-let%test _ = find_at_beggining ocaml_rule.rule "\"foo\" 12.32" = (String, 5)
-let%test _ = find_at_beggining ocaml_rule.rule "foo" = (Normal, 1)
+let%test_module "tests" = (module struct
+  let ocaml_syntax = Syntax.detect_filetype ".ml"
+  let%test _ = find_at_beggining ocaml_syntax.rule "12" = (Number, 2)
+  let%test _ = find_at_beggining ocaml_syntax.rule "12." = (Number, 3)
+  let%test _ = find_at_beggining ocaml_syntax.rule "12.32" = (Number, 5)
+  let%test _ = find_at_beggining ocaml_syntax.rule "int32" = (Normal, 1)
+  let%test _ = find_at_beggining ocaml_syntax.rule "\"foo\" 12.32" = (String, 5)
+  let%test _ = find_at_beggining ocaml_syntax.rule "foo" = (Normal, 1)
+end)
 
 (* returns a list of highlight group.
  * Each element is corresponding to respective chars in text *)
