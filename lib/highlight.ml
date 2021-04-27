@@ -2,13 +2,15 @@ type highlight_group =
   | Normal
   | String
   | Number
+  | Keyword
   | Comment
   | Match
 
 let color_of_hlgroup = function
   | Normal -> Terminal.Default
   | String -> Terminal.Magenta
-  | Number -> Terminal.Red
+  | Number -> Terminal.Blue
+  | Keyword -> Terminal.Cyan
   | Comment -> Terminal.Green
   | Match -> Terminal.Inv_yellow
 
@@ -39,7 +41,8 @@ module Syntax = struct
       rule = [
         { group = Number; regex = {|\b\d+\.?\d*|} };
         { group = String; regex = {|".*?(?<!\\)"|'.*?(?<!\\)'|} };
-        { group = Comment ; regex = {|\(\*.*?\*\)|} };
+        { group = Keyword; regex = {|\band\b|\bas\b|\bassert\b|\basr\b|\bbegin\b|\bclass\b|\bconstraint\b|\bdo\b|\bdone\b|\bdownto\b|\belse\b|\bend\b|\bexception\b|\bexternal\b|\bfalse\b|\bfor\b|\bfun\b|\bfunction\b|\bfunctor\b|\bif\b|\bin\b|\binclude\b|\binherit\b|\binitializer\b|\bland\b|\blazy\b|\blet\b|\blor\b|\blsl\b|\blsr\b|\blxor\b|\bmatch\b|\bmethod\b|\bmod\b|\bmodule\b|\bmutable\b|\bnew\b|\bnonrec\b|\bobject\b|\bof\b|\bopen\b|\bor\b|\bprivate\b|\brec\b|\bsig\b|\bstruct\b|\bthen\b|\bto\b|\btrue\b|\btry\b|\btype\b|\bval\b|\bvirtual\b|\bwhen\b|\bwhile\b|\bwith\b|} };
+        { group = Comment; regex = {|\(\*.*?\*\)|} };
       ];
     };
   ]
