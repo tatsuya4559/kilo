@@ -36,7 +36,7 @@ module Syntax = struct
       filematch = [".ml"; ".mli"];
       rule = [
         { group = Number;
-          regex = {|\d+\.?\d*|};
+          regex = {|\b\d+\.?\d*|};
         };
         { group = String;
           regex = {|"[^"]*"|};
@@ -56,30 +56,32 @@ end
 
 (* textの先頭でpatternsのいずれかにマッチすればgroupとlengthを返す
  * 見つからなければNormal, 1を返す *)
-let find_at_beggining patterns text =
+let find_at_beggining patterns text pos =
   let rec loop patterns =
     match patterns with
     | [] -> Normal, 1
     | pattern :: tl ->
       try
-        let found = Pcre.pcre_exec ~pos:0 ~pat:pattern.regex ~flags:[`NOTEMPTY] text in
-        let pos, len = found.(0), found.(1) in
-        if pos <> 0 then
+        let found = Pcre.pcre_exec ~pos ~pat:pattern.regex ~flags:[`NOTEMPTY] text in
+        let found_start, found_end = found.(0), found.(1) in
+        if found_start <> pos then
           loop tl
         else
-          pattern.group, len
+          pattern.group, (found_end - found_start)
       with Not_found -> loop tl
   in
   loop patterns
 
 let%test_module "tests" = (module struct
   let ocaml_syntax = Syntax.detect_filetype "test.ml"
-  let%test _ = find_at_beggining ocaml_syntax.rule "12" = (Number, 2)
-  let%test _ = find_at_beggining ocaml_syntax.rule "12." = (Number, 3)
-  let%test _ = find_at_beggining ocaml_syntax.rule "12.32" = (Number, 5)
-  let%test _ = find_at_beggining ocaml_syntax.rule "int32" = (Normal, 1)
-  let%test _ = find_at_beggining ocaml_syntax.rule "\"foo\" 12.32" = (String, 5)
-  let%test _ = find_at_beggining ocaml_syntax.rule "foo" = (Normal, 1)
+  let%test _ = find_at_beggining ocaml_syntax.rule "12" 0 = (Number, 2)
+  let%test _ = find_at_beggining ocaml_syntax.rule "12." 0 = (Number, 3)
+  let%test _ = find_at_beggining ocaml_syntax.rule "12.32" 0 = (Number, 5)
+  let%test _ = find_at_beggining ocaml_syntax.rule "int32" 0 = (Normal, 1)
+  let%test _ = find_at_beggining ocaml_syntax.rule "int32" 3 = (Normal, 1)
+  let%test _ = find_at_beggining ocaml_syntax.rule "\"foo\" 12.32" 0 = (String, 5)
+  let%test _ = find_at_beggining ocaml_syntax.rule "\"foo\" 12.32" 6 = (Number, 5)
+  let%test _ = find_at_beggining ocaml_syntax.rule "foo" 0 = (Normal, 1)
 end)
 
 (* returns a list of highlight group.
@@ -90,7 +92,7 @@ let get_highlights ~matching patterns text =
     if i >= max then
       List.rev hlgroups
     else
-      let group, len = find_at_beggining patterns (BatString.slice ~first:i text) in
+      let group, len = find_at_beggining patterns text i in
       loop (i+len) ((BatList.make len group) @ hlgroups)
   in
   let highlights = loop 0 [] in
