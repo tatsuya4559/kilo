@@ -2,12 +2,14 @@ type highlight_group =
   | Normal
   | String
   | Number
+  | Comment
   | Match
 
 let color_of_hlgroup = function
   | Normal -> Terminal.Default
   | String -> Terminal.Magenta
   | Number -> Terminal.Red
+  | Comment -> Terminal.Green
   | Match -> Terminal.Inv_yellow
 
 
@@ -37,6 +39,7 @@ module Syntax = struct
       rule = [
         { group = Number; regex = {|\b\d+\.?\d*|} };
         { group = String; regex = {|".*?(?<!\\)"|'.*?(?<!\\)'|} };
+        { group = Comment ; regex = {|\(\*.*?\*\)|} };
       ];
     };
   ]
