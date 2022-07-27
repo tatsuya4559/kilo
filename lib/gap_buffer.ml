@@ -11,6 +11,13 @@ type t = {
   mutable gap_offset: int;
 }
 
+(** debug print for t *)
+let debug t =
+  let open Printf in
+  let string_of_array = BatIO.to_string (Array.print (BatOption.print BatChar.print)) in
+  sprintf "GapBuffer { buf = %s; gap_size = %d; gap_offset = %d; }"
+    (string_of_array t.buf) t.gap_size t.gap_offset
+
 let create size =
   {
     buf = Array.make size None;
@@ -136,20 +143,18 @@ end *)
 let%test_module "gap_buffer test" = (module struct
   open Printf
 
-  let compare got want =
+  let assert_buf_equal got want =
     let is_same_buf = got.buf = want.buf in
     let is_same_gap_size = got.gap_size = want.gap_size in
     let is_same_gap_offset = got.gap_offset = want.gap_offset in
     match (is_same_buf, is_same_gap_size, is_same_gap_offset) with
     | (true, true, true) -> true
-    | (false, _, _) -> failwith "different buf"
-    | (_, false, _) -> failwith (sprintf "gap_size: want %d, got %d" want.gap_size got.gap_size)
-    | (_, _, false) -> failwith (sprintf "gap_offset: want %d, got %d" want.gap_offset got.gap_offset)
+    | _ -> failwith (sprintf "gap_buffer: want %s, got %s" (debug want) (debug got))
 
 
   let%test "create" =
     let gapbuf = create 3 in
-    compare gapbuf {
+    assert_buf_equal gapbuf {
       buf = [|None; None; None|];
       gap_size = 3;
       gap_offset = 0;
@@ -162,8 +167,8 @@ let%test_module "gap_buffer test" = (module struct
   let%test "insert at gap" =
     let gapbuf = create 5 in
     insert gapbuf 2 'a';
-    compare gapbuf {
-      buf = [|Some('a'); None; None; None; None|];
+    assert_buf_equal gapbuf {
+      buf = [|Some 'a'; None; None; None; None|];
       gap_size = 4;
       gap_offset = 1;
     }
