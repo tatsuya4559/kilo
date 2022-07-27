@@ -22,6 +22,7 @@ type t = {
 }
 
 (** debug print for t *)
+(* TODO: use ppx_derving.show *)
 let debug t =
   let string_of_array = IO.to_string (Array.print (Option.print Char.print)) in
   sprintf "GapBuffer { buf = %s; gap_size = %d; gap_offset = %d; }"
@@ -34,7 +35,7 @@ let equal t1 t2 =
     && t1.gap_offset = t2.gap_offset
     && buf_equal t1.buf t2.buf
 
-let create size =
+let make size =
   {
     buf = Array.make size None;
     gap_size = size;
@@ -72,7 +73,7 @@ let%test_module "gap_buffer test" = (module struct
 
 
   let%test_unit "create" =
-    let gapbuf = create 3 in
+    let gapbuf = make 3 in
     assert_buf_equal gapbuf {
       buf = [|None; None; None|];
       gap_size = 3;
@@ -80,11 +81,11 @@ let%test_module "gap_buffer test" = (module struct
     }
 
   let%test "at None" = 
-    let gapbuf = create 3 in
+    let gapbuf = make 3 in
     at gapbuf 1 = None
 
   let%test_unit "insert at 0, 1" =
-    let gapbuf = create 5 in
+    let gapbuf = make 5 in
     insert gapbuf 0 'a';
     assert_buf_equal gapbuf {
       buf = [|Some 'a'; None; None; None; None|];

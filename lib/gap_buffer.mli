@@ -1,7 +1,7 @@
 type t
 
 (** create makes empty gap buffer of given size *)
-val create : int -> t
+val make : int -> t
 
 (** at returns non-gap element at given offset
     returns None if gap buffer is empty *)
