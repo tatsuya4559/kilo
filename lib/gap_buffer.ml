@@ -51,104 +51,10 @@ let at t offset =
       Array.get t.buf (offset + t.gap_size)
   end
 
-let insert t _ elem =
-  t.buf.(0) <- Some elem;
+let insert t offset elem =
+  t.buf.(offset) <- Some elem;
   t.gap_size <- t.gap_size - 1;
   t.gap_offset <- t.gap_offset + 1
-
-(* let grow t =
-  let size = Array.length t.buf in
-  let new_size = size * 2 in
-  let new_gap_size = t.gap_size + size in
-  let new_gap_end = t.gap_start + new_gap_size - 1 in
-  let new_buf = Array.make new_size None in
-  Array.blit t.buf 0 new_buf 0 t.gap_start;
-  Array.blit t.buf t.gap_end new_buf new_gap_end (size - t.gap_end);
-  t.gap_size <- new_gap_size;
-  t.gap_end <- new_gap_end;
-  t.buf <- new_buf
-
-let at t i =
-  if i < t.gap_start then
-    Option.get t.buf.(i)
-  else
-    Option.get t.buf.(i+t.gap_end)
-
-let set_at t i c =
-  if i < t.gap_start then
-    t.buf.(i) <- Some c
-  else
-    t.buf.(i + t.gap_size - 1) <- Some c
-
-let length t =
-  Array.length t.buf - t.gap_size
-
-let insert_at t i c =
-  if i = t.gap_start then begin
-    set_at t i c;
-    t.gap_size <- t.gap_size - 1;
-    t.gap_start <- t.gap_start + 1
-  end else if i > t.gap_start then begin
-    if i >= length t then begin
-      (* e.g.) Insert F at #
-         before: [A, B, C, x, x, D, E] #
-                           ^  ^
-                           s  e
-         after:  [A, B, C, x, D, E, F]
-                           ^
-                           s
-                           e
-      *)
-      for j = t.gap_end to Array.length t.buf - 2 do
-        t.buf.(j) <- t.buf.(j+1)
-      done;
-      t.buf.(Array.length t.buf - 1) <- Some c;
-      t.gap_size <- t.gap_size - 1;
-      t.gap_end <- t.gap_end - 1
-    end else begin
-      (* e.g.) Insert G at #
-         before: [A, B, C, x, x, x, D, E, #, F]
-                           ^     ^
-                           s     e
-         after:  [A, B, C, D, E, x, x, G, F]
-                                 ^  ^
-                                 s  e
-      *)
-      let n = i + t.gap_size - t.gap_end - 1 in (* num of gaps to move *)
-      for j = 0 to n - 1 do
-        t.buf.(t.gap_start + j) <- t.buf.(t.gap_start + j + t.gap_size);
-        t.buf.(t.gap_start + j + t.gap_size) <- None
-      done;
-      set_at t i c;
-      t.gap_size <- t.gap_size - 1;
-      t.gap_start <- t.gap_start + n;
-      t.gap_end <- t.gap_end + n - 1
-    end
-  end else begin
-    (* e.g.) Insert G at #
-       before: [A, B, #, C, x, x, x, D, E, F]
-                            ^     ^
-                            s     e
-       after:  [A, B, G, x, x, C, D, E, F]
-                         ^  ^
-                         s  e
-    *)
-    let n = t.gap_start - i in
-    for j = 0 to n - 1 do
-      t.buf.(i + j + t.gap_size) <- t.buf.(i + j);
-      t.buf.(i + j) <- None
-    done;
-    set_at t i c;
-    t.gap_size <- t.gap_size - 1;
-    t.gap_start <- t.gap_start - n + 1;
-    t.gap_end <- t.gap_end - n
-  end;
-  if t.gap_start >= t.gap_end then grow t
-
-module type Stringer = sig
-  type t
-  val to_string : t -> string
-end *)
 
 let%test_module "gap_buffer test" = (module struct
 
@@ -171,13 +77,22 @@ let%test_module "gap_buffer test" = (module struct
     let gapbuf = create 3 in
     at gapbuf 1 = None
 
-  let%test "insert at gap" =
+  let%test "insert at 0" =
     let gapbuf = create 5 in
-    insert gapbuf 2 'a';
+    insert gapbuf 0 'a';
     assert_buf_equal gapbuf {
       buf = [|Some 'a'; None; None; None; None|];
       gap_size = 4;
       gap_offset = 1;
+    }
+  let%test "insert at 0, 1" =
+    let gapbuf = create 5 in
+    insert gapbuf 0 'a';
+    insert gapbuf 1 'b';
+    assert_buf_equal gapbuf {
+      buf = [|Some 'a'; Some 'b'; None; None; None|];
+      gap_size = 3;
+      gap_offset = 2;
     }
 
 end)
