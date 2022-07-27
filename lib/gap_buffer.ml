@@ -1,8 +1,12 @@
 (* row = char gapbuf 
    whole = gapbuf gapbuf
    *)
+open Printf
 
 module Array = BatArray
+module Char = BatChar
+module IO = BatIO
+module Option = BatOption
 
 (* いったん char gapbufとして実装してからファンクタにする *)
 type t = {
@@ -13,10 +17,16 @@ type t = {
 
 (** debug print for t *)
 let debug t =
-  let open Printf in
-  let string_of_array = BatIO.to_string (Array.print (BatOption.print BatChar.print)) in
+  let string_of_array = IO.to_string (Array.print (Option.print Char.print)) in
   sprintf "GapBuffer { buf = %s; gap_size = %d; gap_offset = %d; }"
     (string_of_array t.buf) t.gap_size t.gap_offset
+
+let buf_equal = Array.equal (Option.eq ~eq:Char.equal)
+
+let equal t1 t2 =
+  t1.gap_size = t2.gap_size
+    && t1.gap_offset = t2.gap_offset
+    && buf_equal t1.buf t2.buf
 
 let create size =
   {
@@ -141,15 +151,12 @@ module type Stringer = sig
 end *)
 
 let%test_module "gap_buffer test" = (module struct
-  open Printf
 
   let assert_buf_equal got want =
-    let is_same_buf = got.buf = want.buf in
-    let is_same_gap_size = got.gap_size = want.gap_size in
-    let is_same_gap_offset = got.gap_offset = want.gap_offset in
-    match (is_same_buf, is_same_gap_size, is_same_gap_offset) with
-    | (true, true, true) -> true
-    | _ -> failwith (sprintf "gap_buffer: want %s, got %s" (debug want) (debug got))
+    if equal got want then
+      true
+    else
+      failwith (sprintf "gap_buffer: want %s, got %s" (debug want) (debug got))
 
 
   let%test "create" =
