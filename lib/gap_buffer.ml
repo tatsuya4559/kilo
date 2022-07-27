@@ -8,6 +8,12 @@ module Char = BatChar
 module IO = BatIO
 module Option = BatOption
 
+(* module type ElementType = sig
+  type t
+  val print : 'a BatInnerIO.output -> t -> unit
+  val equal : t -> t -> bool
+end *)
+
 (* いったん char gapbufとして実装してからファンクタにする *)
 type t = {
   mutable buf: char option array;
@@ -60,12 +66,12 @@ let%test_module "gap_buffer test" = (module struct
 
   let assert_buf_equal got want =
     if equal got want then
-      true
+      ()
     else
       failwith (sprintf "gap_buffer: want %s, got %s" (debug want) (debug got))
 
 
-  let%test "create" =
+  let%test_unit "create" =
     let gapbuf = create 3 in
     assert_buf_equal gapbuf {
       buf = [|None; None; None|];
@@ -77,17 +83,14 @@ let%test_module "gap_buffer test" = (module struct
     let gapbuf = create 3 in
     at gapbuf 1 = None
 
-  let%test "insert at 0" =
+  let%test_unit "insert at 0, 1" =
     let gapbuf = create 5 in
     insert gapbuf 0 'a';
     assert_buf_equal gapbuf {
       buf = [|Some 'a'; None; None; None; None|];
       gap_size = 4;
       gap_offset = 1;
-    }
-  let%test "insert at 0, 1" =
-    let gapbuf = create 5 in
-    insert gapbuf 0 'a';
+    };
     insert gapbuf 1 'b';
     assert_buf_equal gapbuf {
       buf = [|Some 'a'; Some 'b'; None; None; None|];
