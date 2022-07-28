@@ -42,21 +42,11 @@ let make size =
     gap_offset = 0;
   }
 
-let content_length t =
-  Array.length t.buf - t.gap_size
-
 let at t offset =
-  if content_length t <= offset then
-    None
-  else begin
-    assert (offset < (Array.length t.buf - t.gap_size));
-    if offset < t.gap_offset then
-      match Array.get t.buf offset with
-      | Some ch -> Some ch
-      | None -> assert false
-    else
-      Array.get t.buf (offset + t.gap_size)
-  end
+  if offset < t.gap_offset then
+    t.buf.(offset)
+  else
+    t.buf.(offset + t.gap_size)
 
 let insert t offset elem =
   t.buf.(offset) <- Some elem;
@@ -80,9 +70,10 @@ let%test_module "gap_buffer test" = (module struct
       gap_offset = 0;
     }
 
-  let%test "at None" = 
+  let%test "get element before gap" =
     let gapbuf = make 3 in
-    at gapbuf 1 = None
+    insert gapbuf 0 'a';
+    at gapbuf 0 = Some 'a'
 
   let%test_unit "insert at 0, 1" =
     let gapbuf = make 5 in
