@@ -43,10 +43,55 @@ let at t offset =
   else
     t.buf.(offset + t.gap_size)
 
+let content_length t = Array.length t.buf - t.gap_size
+
+let glow_buf_size t =
+  let size = Array.length t.buf in
+  assert (t.gap_size = 0);
+  t.buf <- Array.append t.buf (Array.make size None);
+  t.gap_offset <- size;
+  t.gap_size <- t.gap_size + size
+
+let reserve_buf_size t size =
+  if Array.length t.buf >= size then
+    ()
+  else
+    glow_buf_size t
+
+let move_gap t offset =
+  (* when gap is after cursor *)
+  (* xx|xoooxxx*)
+  if offset < t.gap_offset then (
+    t.buf <-
+      Array.concat
+        [
+          Array.sub t.buf 0 offset;
+          Array.sub t.buf t.gap_offset t.gap_size;
+          Array.sub t.buf offset (t.gap_offset - offset);
+          Array.sub t.buf
+            (t.gap_offset + t.gap_size)
+            (Array.length t.buf - (t.gap_offset + t.gap_size));
+        ];
+    t.gap_offset <- offset
+  ) else
+    ()
+
+(* when gap is before cursor *)
+(* xxxooox|xx*)
+
+(* when cursor is mid of gap (is this possible?) *)
+(* xxxo|ooxxx*)
+
 let insert t offset elem =
-  t.buf.(offset) <- Some elem;
-  t.gap_size <- t.gap_size - 1;
-  t.gap_offset <- t.gap_offset + 1
+  if offset < 0 || content_length t < offset then
+    failwith "out of range"
+  else (
+    reserve_buf_size t (content_length t + 1);
+    move_gap t offset;
+    t.buf.(offset) <- Some elem;
+    t.gap_size <- t.gap_size - 1;
+    t.gap_offset <- t.gap_offset + 1
+  )
 
 let%test_module "gap_buffer test" =
   (module struct
@@ -65,7 +110,34 @@ let%test_module "gap_buffer test" =
     let%test "get element before gap" =
       let gapbuf = make 3 in
       insert gapbuf 0 'a';
+      (* 0    1     2     *)
+      (* 'a'; None; None; *)
       at gapbuf 0 = Some 'a'
+
+    let%test "get element after gap" =
+      let gapbuf = make 3 in
+      insert gapbuf 0 'a';
+      move_gap gapbuf 0;
+      (* 0     1     2    *)
+      (* None; None; 'a'; *)
+      at gapbuf 0 = Some 'a'
+
+    let%test "content length" =
+      let gapbuf = make 3 in
+      insert gapbuf 0 'a';
+      content_length gapbuf = 1
+
+    let%test_unit "glow buf size" =
+      let gapbuf = make 2 in
+      insert gapbuf 0 'a';
+      insert gapbuf 1 'b';
+      glow_buf_size gapbuf;
+      assert_buf_equal gapbuf
+        {
+          buf = [| Some 'a'; Some 'b'; None; None |];
+          gap_size = 2;
+          gap_offset = 2;
+        }
 
     let%test_unit "insert at 0, 1" =
       let gapbuf = make 5 in
