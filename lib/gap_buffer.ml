@@ -13,6 +13,11 @@ module Option = BatOption
   val equal : t -> t -> bool
 end *)
 
+(*
+offset means index in t.buf array = internal use
+index means index of content elements = interface use
+*)
+
 (* いったん char gapbufとして実装してからファンクタにする *)
 type t = {
   mutable buf : char option array;
@@ -37,11 +42,17 @@ let equal t1 t2 =
 
 let make size = { buf = Array.make size None; gap_size = size; gap_offset = 0 }
 
-let at t offset =
-  if offset < t.gap_offset then
-    t.buf.(offset)
+let index_to_offset t index =
+  if index <= t.gap_offset then
+    index
   else
-    t.buf.(offset + t.gap_size)
+    index + t.gap_size
+
+let at t index =
+  if index < t.gap_offset then
+    t.buf.(index)
+  else
+    t.buf.(index + t.gap_size)
 
 let content_length t = Array.length t.buf - t.gap_size
 
@@ -59,9 +70,13 @@ let reserve_buf_size t size =
     glow_buf_size t
 
 let move_gap t offset =
-  (* when gap is after cursor *)
-  (* xx|xoooxxx*)
-  if offset < t.gap_offset then (
+  if offset >= Array.length t.buf then
+    failwith "move_gap offset out of range"
+  else if offset = t.gap_offset then
+    ()
+  else if offset < t.gap_offset then (
+    (* when gap is after cursor *)
+    (* xx|xoooxxx*)
     t.buf <-
       Array.concat
         [
@@ -74,21 +89,32 @@ let move_gap t offset =
         ];
     t.gap_offset <- offset
   ) else
-    ()
-
-(* when gap is before cursor *)
-(* xxxooox|xx*)
+    (* when gap is before cursor *)
+    (* xxxooox|xx*)
+    t.buf <-
+      Array.concat
+        [
+          Array.sub t.buf 0 t.gap_offset;
+          Array.sub t.buf
+            (t.gap_offset + t.gap_size)
+            (offset - (t.gap_offset + t.gap_size));
+          Array.sub t.buf t.gap_offset t.gap_size;
+          Array.sub t.buf offset (Array.length t.buf - offset);
+        ];
+  t.gap_offset <- offset
 
 (* when cursor is mid of gap (is this possible?) *)
 (* xxxo|ooxxx*)
 
-let insert t offset elem =
-  if offset < 0 || content_length t < offset then
+let insert t index elem =
+  if index < 0 || content_length t < index then
     failwith "out of range"
   else (
     reserve_buf_size t (content_length t + 1);
+    (* index_to_offset関数はいらなくて、単にmove_gapの考慮が足りていないみたい*)
+    let offset = index_to_offset t index in
     move_gap t offset;
-    t.buf.(offset) <- Some elem;
+    t.buf.(index) <- Some elem;
     t.gap_size <- t.gap_size - 1;
     t.gap_offset <- t.gap_offset + 1
   )
