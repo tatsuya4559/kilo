@@ -4,12 +4,10 @@
 open Printf
 module Array = BatArray
 module Char = BatChar
-module IO = BatIO
 module Option = BatOption
 
 (* module type ElementType = sig
   type t
-  val print : 'a BatInnerIO.output -> t -> unit
   val equal : t -> t -> bool
 end *)
 
@@ -23,15 +21,9 @@ type t = {
   mutable buf : char option array;
   mutable gap_size : int;
   mutable gap_offset : int;
-}
+} [@@deriving show]
 
 (* TODO: use ppx_derving.show *)
-
-(** debug print for t *)
-let debug t =
-  let string_of_array = IO.to_string (Array.print (Option.print Char.print)) in
-  sprintf "GapBuffer { buf = %s; gap_size = %d; gap_offset = %d; }"
-    (string_of_array t.buf) t.gap_size t.gap_offset
 
 let buf_equal = Array.equal (Option.eq ~eq:Char.equal)
 
@@ -69,14 +61,15 @@ let reserve_buf_size t size =
   else
     glow_buf_size t
 
-let move_gap t offset =
-  if offset >= Array.length t.buf then
+let move_gap t index =
+  let offset = index_to_offset t index in
+  if index > content_length t then
     failwith "move_gap offset out of range"
   else if offset = t.gap_offset then
+    (* when gap is at the cursor *)
     ()
   else if offset < t.gap_offset then (
     (* when gap is after cursor *)
-    (* xx|xoooxxx*)
     t.buf <-
       Array.concat
         [
@@ -87,10 +80,9 @@ let move_gap t offset =
             (t.gap_offset + t.gap_size)
             (Array.length t.buf - (t.gap_offset + t.gap_size));
         ];
-    t.gap_offset <- offset
+    t.gap_offset <- index
   ) else
     (* when gap is before cursor *)
-    (* xxxooox|xx*)
     t.buf <-
       Array.concat
         [
@@ -101,19 +93,14 @@ let move_gap t offset =
           Array.sub t.buf t.gap_offset t.gap_size;
           Array.sub t.buf offset (Array.length t.buf - offset);
         ];
-  t.gap_offset <- offset
-
-(* when cursor is mid of gap (is this possible?) *)
-(* xxxo|ooxxx*)
+  t.gap_offset <- index
 
 let insert t index elem =
   if index < 0 || content_length t < index then
     failwith "out of range"
   else (
     reserve_buf_size t (content_length t + 1);
-    (* index_to_offset関数はいらなくて、単にmove_gapの考慮が足りていないみたい*)
-    let offset = index_to_offset t index in
-    move_gap t offset;
+    move_gap t index;
     t.buf.(index) <- Some elem;
     t.gap_size <- t.gap_size - 1;
     t.gap_offset <- t.gap_offset + 1
@@ -126,7 +113,7 @@ let%test_module "gap_buffer test" =
         ()
       else
         failwith
-          (sprintf "gap_buffer: want %s, got %s" (debug want) (debug got))
+          (sprintf "gap_buffer: want %s, got %s" (show want) (show got))
 
     let%test_unit "create" =
       let gapbuf = make 3 in
@@ -163,6 +150,70 @@ let%test_module "gap_buffer test" =
           buf = [| Some 'a'; Some 'b'; None; None |];
           gap_size = 2;
           gap_offset = 2;
+        }
+
+    let%test_unit "move gap to head" =
+      let gapbuf =
+        {
+          buf = [| Some 'a'; None; None; Some 'b' |];
+          gap_size = 2;
+          gap_offset = 1;
+        }
+      in
+      move_gap gapbuf 0;
+      assert_buf_equal gapbuf
+        {
+          buf = [| None; None; Some 'a'; Some 'b' |];
+          gap_size = 2;
+          gap_offset = 0;
+        }
+
+    let%test_unit "move gap stay" =
+      let gapbuf =
+        {
+          buf = [| Some 'a'; None; None; Some 'b' |];
+          gap_size = 2;
+          gap_offset = 1;
+        }
+      in
+      move_gap gapbuf 1;
+      assert_buf_equal gapbuf
+        {
+          buf = [| Some 'a'; None; None; Some 'b' |];
+          gap_size = 2;
+          gap_offset = 1;
+        }
+
+    let%test_unit "move gap forward" =
+      let gapbuf =
+        {
+          buf = [| Some 'a'; None; None; Some 'b'; Some 'c' |];
+          gap_size = 2;
+          gap_offset = 1;
+        }
+      in
+      move_gap gapbuf 2;
+      assert_buf_equal gapbuf
+        {
+          buf = [| Some 'a'; Some 'b'; None; None; Some 'c' |];
+          gap_size = 2;
+          gap_offset = 2;
+        }
+
+    let%test_unit "move gap end" =
+      let gapbuf =
+        {
+          buf = [| Some 'a'; None; None; Some 'b'; Some 'c' |];
+          gap_size = 2;
+          gap_offset = 1;
+        }
+      in
+      move_gap gapbuf 3;
+      assert_buf_equal gapbuf
+        {
+          buf = [| Some 'a'; Some 'b'; Some 'c'; None; None |];
+          gap_size = 2;
+          gap_offset = 3;
         }
 
     let%test_unit "insert at 0, 1" =
