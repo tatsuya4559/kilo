@@ -30,13 +30,12 @@ module type S = sig
   val equal : t -> t -> bool
 
   val make : int -> t
-  (** create makes empty gap buffer of given size *)
 
   val at : t -> int -> elem option
-  (** at returns non-gap element at given offset
-      returns None if gap buffer is empty *)
 
   val insert : t -> int -> elem -> unit
+
+  val erase : t -> int -> unit
 
   val pp : Format.formatter -> t -> unit
 
@@ -133,6 +132,15 @@ module Make (M : ElementType) : S with type elem := M.t = struct
       t.gap_offset <- t.gap_offset + 1
     )
 
+  let erase t index =
+    if index < 0 || content_length t <= index then
+      failwith "out of range"
+    else (
+      move_gap t index;
+      t.buf.(index) <- None;
+      t.gap_size <- t.gap_size + 1
+    )
+
   let to_string t =
     Array.filter_map
       (function Some e -> Some (M.to_string e) | None -> None)
@@ -162,7 +170,7 @@ let%test_module "RowBuffer test" =
 
     let%test "create" =
       let gapbuf = make 3 in
-      (to_string gapbuf) = ""
+      to_string gapbuf = ""
 
     let%test "get element before gap" =
       let gapbuf = make 3 in
@@ -178,15 +186,17 @@ let%test_module "RowBuffer test" =
     let%test_unit "insert at 0, 1" =
       let gapbuf = make 5 in
       insert gapbuf 0 'a';
-      assert ((to_string gapbuf) = "a");
+      assert (to_string gapbuf = "a");
       insert gapbuf 1 'b';
-      assert ((to_string gapbuf) = "ab");
+      assert (to_string gapbuf = "ab");
       insert gapbuf 0 'c';
-      assert ((to_string gapbuf) = "cab");
+      assert (to_string gapbuf = "cab");
       insert gapbuf 3 'd';
-      assert ((to_string gapbuf) = "cabd");
+      assert (to_string gapbuf = "cabd");
       insert gapbuf 4 'e';
-      assert ((to_string gapbuf) = "cabde")
+      assert (to_string gapbuf = "cabde");
+      erase gapbuf 4;
+      assert (to_string gapbuf = "cabd")
   end)
 
 let%test_module "EditorBuffer test" =
@@ -194,13 +204,14 @@ let%test_module "EditorBuffer test" =
     open EditorBuffer
 
     let row = RowBuffer.make 10
+
     let _ =
       RowBuffer.insert row 0 'a';
       RowBuffer.insert row 1 'b'
 
     let%test "create" =
       let gapbuf = make 3 in
-      (to_string gapbuf) = ""
+      to_string gapbuf = ""
 
     let%test "get element before gap" =
       let gapbuf = make 3 in
@@ -216,9 +227,9 @@ let%test_module "EditorBuffer test" =
     let%test_unit "insert at 0, 1" =
       let gapbuf = make 5 in
       insert gapbuf 0 row;
-      assert ((to_string gapbuf) = "ab");
+      assert (to_string gapbuf = "ab");
       insert gapbuf 1 row;
-      assert ((to_string gapbuf) = "ab\nab");
+      assert (to_string gapbuf = "ab\nab");
       insert gapbuf 0 row;
-      assert ((to_string gapbuf) = "ab\nab\nab")
+      assert (to_string gapbuf = "ab\nab\nab")
   end)
